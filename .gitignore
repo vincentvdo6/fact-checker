@@ -32,14 +32,13 @@ Thumbs.db
 nul
 
 # Datasets and derived corpora (fetched via scripts/)
-data/
-!data/README.md
+/data/
 
 # Model weights and trained artifacts
-models/
+/models/
 
 # Experiment outputs — figures, predictions, run metadata
-runs/
+/runs/
 
 # Notebook checkpoints and executed output
 .ipynb_checkpoints/

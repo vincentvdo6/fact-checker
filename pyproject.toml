@@ -6,6 +6,7 @@ requires-python = ">=3.12"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 markers = [
     "slow: tests that load real model artifacts or corpora (deselect with '-m \"not slow\"')",
 ]
