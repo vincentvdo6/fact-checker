@@ -1,0 +1,66 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment / secrets
+.env
+.env.local
+.env.production
+
+# Test / lint / type caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.benchmarks/
+.coverage
+htmlcov/
+
+# IDE / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+nul
+
+# Datasets and derived corpora (fetched via scripts/)
+data/
+!data/README.md
+
+# Model weights and trained artifacts
+models/
+
+# Experiment outputs — figures, predictions, run metadata
+runs/
+
+# Notebook checkpoints and executed output
+.ipynb_checkpoints/
+
+# Large binary formats — never commit
+*.zip
+*.tar.gz
+*.npy
+*.npz
+*.pt
+*.pth
+*.onnx
+*.pkl
+*.parquet
+*.index
+*.bin
+*.gguf
+*.sqlite3
+*.sqlite3-*
+*.db
+
+# Logs / temp
+*.log
+*.tmp

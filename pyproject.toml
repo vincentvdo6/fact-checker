@@ -1,0 +1,20 @@
+[project]
+name = "fact-checker"
+version = "0.1.0"
+description = "Calibrated claim verification: retrieve evidence, score a verdict, abstain when the evidence doesn't support one"
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "slow: tests that load real model artifacts or corpora (deselect with '-m \"not slow\"')",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = ["*.ipynb"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]
