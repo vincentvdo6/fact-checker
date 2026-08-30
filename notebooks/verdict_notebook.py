@@ -5,7 +5,8 @@
 # in their CFG cell; the per-variant logic lives in `encode_spec.select_evidence`, shipped inside
 # the dataset so training runs the same code the repository scores with.
 #
-# **Attach:** the `fever-verdict-v1` dataset. Nothing else, and nothing is downloaded at runtime.
+# **Attach:** the `fever-verdict-v1` dataset, and switch the notebook's internet setting on --
+# the base model and tokenizer come from the hub, and Kaggle disables internet by default.
 #
 # **Before a full run:** set `smoke = True` and run to the end. It rehearses every failure path
 # in under ten minutes, including a deliberate kill and resume, and prints the extrapolated time
@@ -34,7 +35,7 @@ if torch.cuda.is_available():
 CFG = dict(
     variant="retrieved",
     base_model="microsoft/deberta-v3-base",
-    base_revision="main",
+    base_revision="8ccc9b6f36199bec6961081d44eb72fb3f7353f3",
     max_length=512,
     template_id="per_page_grouped_v1",
     epochs=2,
@@ -53,7 +54,10 @@ CFG = dict(
 )
 
 WORK = Path("/kaggle/working")
-SMOKE_ROWS, SMOKE_STEPS = 512, 60
+# 2,048 rows at batch 16 with grad_accum 2 gives 64 optimizer steps per epoch, so the
+# step-20 and step-40 triggers below both fire. At 512 the run ran out of data at step 32
+# and the second checkpoint and eval never happened -- a gate that skipped half its checks.
+SMOKE_ROWS, SMOKE_STEPS = 2048, 60
 
 # %%
 # Inputs arrive as an attached dataset, discovered by glob so the mount name cannot break the
@@ -146,6 +150,11 @@ ENCODED = {name: encode(rows) for name, rows in SPLITS.items()}
 for name, rows in SPLITS.items():
     print(f"  {name:<12} {len(rows):>7,} rows")
 
+# The train rows are dead once encoded -- only the tensors are read from here on -- and holding
+# 140k of them costs about 2 GB for the rest of a ten-hour session.
+TRAIN_ROWS = len(SPLITS["train"])
+SPLITS["train"] = []
+
 # %%
 def build_model():
     config = AutoConfig.from_pretrained(
@@ -183,7 +192,7 @@ def provenance() -> dict:
     return {"run_hash": RUN_HASH, "manifest_sha": MANIFEST_SHA, "cfg": CFG}
 
 
-def save_checkpoint(model, optimizer, scheduler, scaler, step: int, epoch: int) -> None:
+def save_checkpoint(model, optimizer, scheduler, scaler, step: int, epoch: int, best: float) -> None:
     """
     Written to .tmp then replaced, because a kill during a 700 MB save would otherwise leave a
     truncated file where the resume expects its rescue.
@@ -191,7 +200,7 @@ def save_checkpoint(model, optimizer, scheduler, scaler, step: int, epoch: int) 
     payload = {
         "model": model.state_dict(), "optimizer": optimizer.state_dict(),
         "scheduler": scheduler.state_dict(), "scaler": scaler.state_dict(),
-        "step": step, "epoch": epoch,
+        "step": step, "epoch": epoch, "best": best,
         "cpu_rng": torch.get_rng_state(), "python_rng": random.getstate(),
         "provenance": provenance(),
     }
@@ -216,9 +225,10 @@ def load_checkpoint(model, optimizer, scheduler, scaler):
         scaler.load_state_dict(payload["scaler"])
         torch.set_rng_state(payload["cpu_rng"].cpu())
         random.setstate(payload["python_rng"])
-        print(f"  resumed from step {payload['step']}")
-        return payload["step"], payload["epoch"]
-    return 0, 0
+        best = payload.get("best", -1.0)
+        print(f"  resumed from step {payload['step']} (best trainval {best:.4f})")
+        return payload["step"], payload["epoch"], best
+    return 0, 0, -1.0
 
 
 # %%
@@ -234,6 +244,9 @@ def evaluate(model, dataset, rows: list[dict]) -> tuple[float, list[dict]]:
                 logits = model(input_ids=input_ids, attention_mask=mask).logits
             # float32 on the way out: Phase 03 fits a temperature on these, and a softmax at
             # fp16 and back loses information nothing downstream can recover.
+            # A non-finite logit would argmax to class 0 in silence and write NaN into the
+            # predictions file that Phase 03 calibrates on -- which is also invalid JSON.
+            assert torch.isfinite(logits).all(), "non-finite logits; rerun in fp32"
             logits = logits.float().cpu()
             for i in range(logits.size(0)):
                 row = rows[offset + i]
@@ -261,10 +274,10 @@ def train():
     model = build_model()
     optimizer, scheduler = make_optimizer(model, total_steps)
     scaler = torch.amp.GradScaler("cuda", enabled=DEVICE == "cuda")
-    step, start_epoch = load_checkpoint(model, optimizer, scheduler, scaler)
+    step, start_epoch, best = load_checkpoint(model, optimizer, scheduler, scaler)
 
     started = time.time()
-    log, best, nonfinite = [], -1.0, 0
+    log, nonfinite = [], 0
     model.train()
 
     for epoch in range(start_epoch, CFG["epochs"]):
@@ -294,12 +307,18 @@ def train():
                 scheduler.step()
                 optimizer.zero_grad(set_to_none=True)
                 step += 1
-                log.append({"step": step, "loss": float(loss), "lr": scheduler.get_last_lr()[0]})
+                # The documented DeBERTa-v3 fp16 failure is an inf in the backward, which the
+                # scaler handles by skipping the step and halving the scale. The forward loss
+                # stays finite throughout, so a collapsing scale is the only visible symptom.
+                log.append({
+                    "step": step, "loss": float(loss),
+                    "lr": scheduler.get_last_lr()[0], "scale": float(scaler.get_scale()),
+                })
 
                 checkpoint_due = step % CFG["ckpt_every_steps"] == 0 or (CFG["smoke"] and step in (20, 40))
                 eval_due = step % CFG["eval_every_steps"] == 0 or (CFG["smoke"] and step in (20, 40))
                 if checkpoint_due:
-                    save_checkpoint(model, optimizer, scheduler, scaler, step, epoch)
+                    save_checkpoint(model, optimizer, scheduler, scaler, step, epoch, best)
                 if eval_due:
                     accuracy, _ = evaluate(model, ENCODED["trainval"], SPLITS["trainval"])
                     print(f"  step {step:>6}  loss {float(loss):.4f}  trainval {accuracy:.4f}", flush=True)
@@ -311,12 +330,19 @@ def train():
 
                 if (time.time() - started) / 3600 > CFG["time_budget_h"]:
                     print(f"  time budget reached at step {step}; saving and scoring what exists")
-                    save_checkpoint(model, optimizer, scheduler, scaler, step, epoch)
-                    return model, log, step, total_steps, started, True
+                    save_checkpoint(model, optimizer, scheduler, scaler, step, epoch, best)
+                    return model, log, step, total_steps, started, True, best
         if step >= total_steps:
             break
 
-    return model, log, step, total_steps, started, False
+    # The last stretch since the previous eval has never been scored, so it cannot be selected
+    # against. Score it now, or the shipped weights are a state nobody measured.
+    accuracy, _ = evaluate(model, ENCODED["trainval"], SPLITS["trainval"])
+    print(f"  final step {step}  trainval {accuracy:.4f}")
+    if accuracy > best:
+        best = accuracy
+        model.save_pretrained(WORK / "best", safe_serialization=True)
+    return model, log, step, total_steps, started, False, best
 
 
 # %%
@@ -333,6 +359,17 @@ def smoke_resume_check():
     scaler = torch.amp.GradScaler("cuda", enabled=DEVICE == "cuda")
     fixed = next(iter(DataLoader(ENCODED["train"], batch_size=CFG["batch"], shuffle=False)))
 
+    def loss_on_fixed() -> float:
+        input_ids, mask, labels, _ = (t.to(DEVICE) for t in fixed)
+        was_training = model.training
+        model.eval()
+        with torch.no_grad():
+            value = float(model(input_ids=input_ids, attention_mask=mask, labels=labels).loss)
+        model.train(was_training)
+        return value
+
+    untrained = loss_on_fixed()
+
     for _ in range(3):
         input_ids, mask, labels, _ = (t.to(DEVICE) for t in fixed)
         with torch.autocast("cuda", dtype=torch.float16, enabled=DEVICE == "cuda"):
@@ -340,14 +377,13 @@ def smoke_resume_check():
         scaler.scale(loss).backward()
         scaler.step(optimizer)
         scaler.update()
+        # Without this the schedule stays in warmup at lr 0, AdamW is a no-op, and the check
+        # round-trips a model identical to a fresh initialisation -- proving nothing.
+        scheduler.step()
         optimizer.zero_grad(set_to_none=True)
 
-    input_ids, mask, labels, _ = (t.to(DEVICE) for t in fixed)
-    model.eval()
-    with torch.no_grad():
-        before = float(model(input_ids=input_ids, attention_mask=mask, labels=labels).loss)
-    model.train()
-    save_checkpoint(model, optimizer, scheduler, scaler, step=7, epoch=0)
+    before = loss_on_fixed()
+    save_checkpoint(model, optimizer, scheduler, scaler, step=7, epoch=0, best=-1.0)
 
     del model, optimizer, scheduler, scaler
     torch.cuda.empty_cache()
@@ -355,16 +391,18 @@ def smoke_resume_check():
     model = build_model()
     optimizer, scheduler = make_optimizer(model, 40)
     scaler = torch.amp.GradScaler("cuda", enabled=DEVICE == "cuda")
-    step, epoch = load_checkpoint(model, optimizer, scheduler, scaler)
+    step, epoch, _ = load_checkpoint(model, optimizer, scheduler, scaler)
+    after = loss_on_fixed()
 
-    model.eval()
-    with torch.no_grad():
-        after = float(model(input_ids=input_ids, attention_mask=mask, labels=labels).loss)
-
+    # Two assertions, and the first is what gives the second meaning: if training moved nothing,
+    # a fresh initialisation would satisfy the round-trip and the check would prove nothing.
+    assert abs(before - untrained) > 1e-4, (
+        f"training moved nothing ({untrained:.6f} -> {before:.6f}); check the LR schedule"
+    )
     assert step == 7 and epoch == 0, f"resumed at step {step}, epoch {epoch}"
     assert abs(before - after) < 1e-3, f"loss moved across the resume: {before:.6f} -> {after:.6f}"
     CKPT.unlink(missing_ok=True)
-    print(f"  resume ok: step {step}, loss {before:.6f} -> {after:.6f}")
+    print(f"  resume ok: untrained {untrained:.6f} -> trained {before:.6f} -> reloaded {after:.6f}")
 
 
 if CFG["smoke"]:
@@ -372,7 +410,7 @@ if CFG["smoke"]:
     smoke_resume_check()
 
 # %%
-model, log, step, total_steps, started, truncated = train()
+model, log, step, total_steps, started, truncated, best = train()
 elapsed = time.time() - started
 per_step = elapsed / max(1, step)
 print(f"\n{step} steps in {elapsed / 60:.1f} min  ({per_step:.2f} s/step)")
@@ -384,6 +422,14 @@ if CFG["smoke"]:
     print("clear CFG['smoke'] only if that fits time_budget_h")
 
 # %%
+# Everything below scores and exports THIS object, so the selection has to be applied here or
+# the trainval holdout was carved out of train for nothing.
+shipped = "final_step"
+if (WORK / "best").exists():
+    model = AutoModelForSequenceClassification.from_pretrained(WORK / "best").to(DEVICE)
+    shipped = "best_trainval"
+    print(f"shipping the best trainval checkpoint ({best:.4f}), not the final step")
+
 results = {}
 for split in ("calibration", "test"):
     accuracy, predictions = evaluate(model, ENCODED[split], SPLITS[split])
@@ -423,6 +469,8 @@ metrics = {
     "cfg": CFG, "steps": step, "planned_steps": total_steps, "truncated": truncated,
     "seconds": round(elapsed, 1), "accuracy": results,
     "train_prior": MANIFEST.get("train_prior"), "smoke": CFG["smoke"],
+    # Which weights these numbers came from. Without it the accuracy is untraceable.
+    "weights": shipped, "best_trainval": best,
 }
 (WORK / "metrics.json").write_text(json.dumps(metrics, indent=2))
 with open(WORK / "train_log.jsonl", "w", encoding="utf-8") as handle:
