@@ -1,1 +1,4 @@
 * text=auto eol=lf
+
+# Generated notebooks are pipeline documentation; as JSON they dwarf the source tree.
+*.ipynb linguist-documentation
