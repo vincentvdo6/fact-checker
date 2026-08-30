@@ -189,9 +189,15 @@ def build_model():
         CFG["base_model"], revision=CFG["base_revision"], num_labels=len(LABELS),
         id2label=dict(enumerate(LABELS)), label2id=LABEL_TO_ID,
     )
-    return AutoModelForSequenceClassification.from_pretrained(
+    model = AutoModelForSequenceClassification.from_pretrained(
         CFG["base_model"], revision=CFG["base_revision"], config=config
-    ).to(DEVICE)
+    )
+    # Master weights must be fp32. autocast casts activations per-op and GradScaler keeps the
+    # gradients in fp32 to unscale them; if from_pretrained hands back fp16 parameters instead,
+    # the gradients are fp16 too and the scaler refuses them with "Attempting to unscale FP16
+    # gradients". Calling .float() is explicit and does not depend on which dtype argument the
+    # installed transformers happens to honour.
+    return model.float().to(DEVICE)
 
 
 def make_optimizer(model, total_steps: int):
