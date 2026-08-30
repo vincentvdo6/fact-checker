@@ -174,5 +174,11 @@ def select_evidence(
     # zero evidence while NOT ENOUGH INFO keeps a full retrieved set, which is the sentence-count
     # artifact this function exists to prevent. The tokenizer then truncates the tail, so the
     # exported count overstates what the model read -- 1 of 13,332 dev claims, and worth the trade.
-    chosen = candidates[: max(len(gold), pack(claim, candidates, budget, measure))]
+    budgeted = max(len(gold), pack(claim, candidates, budget, measure))
+    # Never show more rows than the retrieved condition could. Gold sentences retrieval missed
+    # make `candidates` longer than `retrieved`, so on a row where they all fit the total lands
+    # one above the retrieved cap -- and because only verifiable claims carry gold, that single
+    # extra row is a perfect tell for verifiability wherever it fires. Measured at 3 of 256 test
+    # rows, all verifiable. The gold floor still wins when the group alone is larger.
+    chosen = candidates[: min(budgeted, max(len(gold), len(retrieved)))]
     return shuffle_pages(chosen, rng) if rng is not None else chosen

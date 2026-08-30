@@ -95,8 +95,13 @@ LABEL_TO_ID = {label: i for i, label in enumerate(LABELS)}
 # The manifest hash is part of RUN_HASH: without it a re-uploaded dataset would resume a
 # checkpoint trained on different rows, and nothing would say so.
 MANIFEST_SHA = hashlib.sha256(json.dumps(MANIFEST["files"], sort_keys=True).encode()).hexdigest()
+# The spec decides which rows the model is shown, so it belongs in the run identity too. Without
+# it a change to select_evidence keeps the old RUN_HASH, and a checkpoint trained on one evidence
+# policy resumes under another -- the same silent failure the manifest hash exists to stop, one
+# level up. TEMPLATE_ID does not cover this: it names the rendering, not the selection.
+SPEC_SHA = hashlib.sha256(Path(encode_spec.__file__).read_bytes()).hexdigest()
 RUN_HASH = hashlib.sha256(
-    json.dumps({**CFG, "manifest": MANIFEST_SHA}, sort_keys=True).encode()
+    json.dumps({**CFG, "manifest": MANIFEST_SHA, "spec": SPEC_SHA}, sort_keys=True).encode()
 ).hexdigest()[:16]
 print(f"run {RUN_HASH}  variant {CFG['variant']}  smoke {CFG['smoke']}")
 
@@ -364,7 +369,7 @@ def train():
                     save_checkpoint(model, optimizer, scheduler, scaler, step, epoch, best)
                 if eval_due:
                     accuracy, _ = evaluate(model, ENCODED["trainval"], SPLITS["trainval"])
-                    print(f"  step {step:>6}  loss {float(loss):.4f}  trainval {accuracy:.4f}", flush=True)
+                    print(f"  step {step:>6}  loss {loss.detach().item():.4f}  trainval {accuracy:.4f}", flush=True)
                     # Selection happens on trainval, never on calibration -- calibration has to
                     # stay unseen in every sense for Phase 03 to mean anything.
                     if accuracy > best:
@@ -509,6 +514,7 @@ contract = {
 
 metrics = {
     "variant": CFG["variant"], "run_hash": RUN_HASH, "manifest_sha": MANIFEST_SHA,
+    "spec_sha": SPEC_SHA,
     "cfg": CFG, "steps": step, "planned_steps": total_steps, "truncated": truncated,
     "seconds": round(elapsed, 1), "accuracy": results,
     "train_prior": MANIFEST.get("train_prior"), "smoke": CFG["smoke"],

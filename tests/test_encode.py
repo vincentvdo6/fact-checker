@@ -134,6 +134,25 @@ def test_gold_rows_are_budget_matched_against_retrieved():
     n_verifiable = len(select_evidence(verifiable, "gold", budget, words))
     n_nei = len(select_evidence(nei, "gold", budget, words))
     assert abs(n_verifiable - n_nei) <= 1
+    # Strictly never more, either: an extra row appears only when a claim has gold, so even a
+    # one-row overhang separates verifiable from NOT ENOUGH INFO perfectly wherever it occurs.
+    assert n_verifiable <= n_nei
+
+
+def test_gold_never_shows_more_rows_than_retrieval_had():
+    """
+    Gold sentences outside the retrieved set make the candidate list longer than the retrieved
+    one. Capping matters because only verifiable claims have gold, so any row count retrieval
+    could not have produced is a free label.
+    """
+    budget = 10_000                      # large enough that the token budget binds nothing
+    retrieved = sentences(25)
+    row = {
+        "claim": "a claim",
+        "evidence": retrieved,
+        "gold": [ev("Unretrieved_Page", 1, "a gold sentence retrieval missed")],
+    }
+    assert len(select_evidence(row, "gold", budget, words)) <= len(retrieved)
 
 
 def test_gold_is_not_duplicated_by_the_retrieved_fill():
