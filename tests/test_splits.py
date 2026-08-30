@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from src.data.fever import LABELS, Claim, claim_key, load_claims
-from src.data.splits import drop_leaked, split_dev
+from src.data.splits import HOLDOUT_PER_LABEL, drop_leaked, holdout, split_dev
 
 DEV = "data/fever/shared_task_dev.jsonl"
 TRAIN = "data/fever/train.jsonl"
@@ -128,3 +128,70 @@ def test_real_train_has_no_evaluation_leakage():
     cleaned = drop_leaked(load_claims(TRAIN), calibration, test)
     blocked = {c.key for c in calibration} | {c.key for c in test}
     assert not any(c.key in blocked for c in cleaned)
+
+
+def test_holdout_is_balanced_by_label():
+    """Train runs 55/20/25 but both dev halves are 33/33/33; selection must match evaluation."""
+    claims = synthetic(per_label=100)
+    remaining, held = holdout(claims, per_label=20)
+    for label in LABELS:
+        assert sum(1 for c in held if c.label == label) == 20
+        assert sum(1 for c in remaining if c.label == label) == 80
+
+
+def test_holdout_partitions_the_input():
+    claims = synthetic(per_label=100)
+    remaining, held = holdout(claims, per_label=20)
+    assert len(remaining) + len(held) == len(claims)
+    assert {c.id for c in remaining} & {c.id for c in held} == set()
+
+
+def test_no_claim_key_spans_the_holdout_boundary():
+    """A key selected on and trained on at once would make the selection meaningless."""
+    claims = synthetic(per_label=60)
+    remaining, held = holdout(claims, per_label=10)
+    assert {c.key for c in remaining} & {c.key for c in held} == set()
+
+
+def test_holdout_takes_every_row_of_a_repeated_key():
+    claims = synthetic(per_label=30) + [make("SUPPORTS claim number 0", "SUPPORTS", id_=70_000)]
+    _, held = holdout(claims, per_label=30)
+    key = claim_key("SUPPORTS claim number 0")
+    assert sum(1 for c in held if c.key == key) == 2
+
+
+def test_holdout_is_deterministic_and_order_independent():
+    claims = synthetic(per_label=40)
+    first = {c.key for c in holdout(claims, per_label=10)[1]}
+    second = {c.key for c in holdout(list(reversed(claims)), per_label=10)[1]}
+    assert first == second
+
+
+def test_holdout_uses_a_different_cut_than_the_dev_split():
+    """Sharing a salt would correlate the two splits for no reason."""
+    claims = synthetic(per_label=40)
+    from src.data.splits import DEFAULT_SALT
+
+    assert {c.key for c in holdout(claims, per_label=10)[1]} != {
+        c.key for c in holdout(claims, per_label=10, salt=DEFAULT_SALT)[1]
+    }
+
+
+def test_holdout_refuses_when_a_label_is_too_small():
+    with pytest.raises(ValueError, match="need 50"):
+        holdout(synthetic(per_label=40), per_label=50)
+
+
+@pytest.mark.slow
+@requires_fever
+def test_real_holdout_leaves_train_usable():
+    calibration, test = split_dev(load_claims(DEV))
+    train = drop_leaked(load_claims(TRAIN), calibration, test)
+    remaining, held = holdout(train)
+
+    assert len(remaining) + len(held) == len(train)
+    assert {c.key for c in remaining} & {c.key for c in held} == set()
+    # Balanced by key; rows run slightly above 3 * per_label because keys repeat.
+    assert 3 * HOLDOUT_PER_LABEL <= len(held) < 3 * HOLDOUT_PER_LABEL * 1.2
+    for label in LABELS:
+        assert sum(1 for c in held if c.label == label) >= HOLDOUT_PER_LABEL
