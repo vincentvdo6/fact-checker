@@ -106,11 +106,27 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 # %%
 def read_rows(split: str) -> list[dict]:
+    """
+    Read a split, gzipped or not.
+
+    Kaggle decompresses .gz members when it ingests a dataset, so the file uploaded as
+    verdict_train.jsonl.gz arrives as verdict_train.jsonl. Accepting both keeps the same code
+    working against the local build and the attached copy.
+    """
     import gzip
 
-    path = DATA / f"verdict_{split}.jsonl.gz"
-    assert path.exists(), f"{path.name} missing from the attached dataset"
-    with gzip.open(path, "rt", encoding="utf-8") as handle:
+    packed = DATA / f"verdict_{split}.jsonl.gz"
+    plain = DATA / f"verdict_{split}.jsonl"
+    if packed.exists():
+        handle = gzip.open(packed, "rt", encoding="utf-8")
+    elif plain.exists():
+        handle = open(plain, encoding="utf-8")
+    else:
+        raise AssertionError(
+            f"verdict_{split}.jsonl[.gz] missing from the attached dataset; "
+            "re-run scripts/upload_verdict_dataset.py"
+        )
+    with handle:
         rows = [json.loads(line) for line in handle]
     if CFG["smoke"]:
         rows = rows[: SMOKE_ROWS if split == "train" else min(256, len(rows))]
