@@ -20,7 +20,7 @@ requires_fever = pytest.mark.skipif(
 
 
 def make(text: str, label: str, id_: int = 0) -> Claim:
-    return Claim(id=id_, label=label, text=text, key=claim_key(text), pages=())
+    return Claim(id=id_, label=label, text=text, key=claim_key(text), groups=(), pages=())
 
 
 def synthetic(per_label: int = 60) -> list[Claim]:

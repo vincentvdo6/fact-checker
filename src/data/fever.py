@@ -7,9 +7,9 @@ whitespace-collapsed form of the claim text. That key exists because claims repe
 (753 in train, 55 in dev), so identical text must be kept together and must never
 straddle an evaluation split.
 
-Evidence page names are retained for later retrieval scoring, but are empty for
-every NOT ENOUGH INFO row (0 of 35,639 in train), so nothing downstream may assume
-a claim has pages.
+Evidence is retained for retrieval scoring as `groups` -- see _groups for why the
+shape matters -- with `pages` derived from it. Both are empty for every NOT ENOUGH INFO
+row (0 of 35,639 in train), so nothing downstream may assume a claim has evidence.
 """
 
 from __future__ import annotations
@@ -33,20 +33,47 @@ class Claim:
     label: str
     text: str
     key: str                    # grouping key; see module docstring
-    pages: tuple[str, ...]      # gold evidence pages, empty for NOT ENOUGH INFO
+    groups: tuple[frozenset[tuple[str, int]], ...]   # gold evidence; see _groups
+    pages: tuple[str, ...]      # pages named by groups, empty for NOT ENOUGH INFO
 
 
 def claim_key(text: str) -> str:
     return _WHITESPACE.sub(" ", text.strip().lower())
 
 
-def _pages(evidence: list) -> tuple[str, ...]:
-    seen: dict[str, None] = {}
+def _groups(evidence: list) -> tuple[frozenset[tuple[str, int]], ...]:
+    """
+    Gold evidence as deduplicated sets of (page, sentence_index) references.
+
+    A claim is verified by any ONE group in full: conjunctive within a group, disjunctive
+    between them. Annotators overlap heavily -- 21.5% of dev groups and 22.0% of train
+    groups are exact duplicates -- so they are deduplicated here rather than double-counted
+    by everything downstream.
+
+    A group holding a null page is dropped whole rather than emptied. Every NOT ENOUGH INFO
+    row is exactly one such group, and an empty frozenset is a subset of everything, so
+    keeping one would make any recall metric unconditionally perfect.
+    """
+    seen: dict[frozenset[tuple[str, int]], None] = {}
     for group in evidence:
+        refs: list[tuple[str, int]] = []
         for item in group:
-            page = item[2]
-            if page is not None:
-                seen[page] = None
+            page, sentence = item[2], item[3]
+            if page is None or sentence is None:
+                refs = []
+                break
+            refs.append((page, sentence))
+        if refs:
+            seen[frozenset(refs)] = None
+    return tuple(seen)
+
+
+def _pages(groups: tuple[frozenset[tuple[str, int]], ...]) -> tuple[str, ...]:
+    # Sorted within each group because frozenset iteration order is not stable across runs.
+    seen: dict[str, None] = {}
+    for group in groups:
+        for page, _ in sorted(group):
+            seen[page] = None
     return tuple(seen)
 
 
@@ -58,13 +85,15 @@ def load_claims(path: str | Path) -> list[Claim]:
             label = row["label"]
             if label not in LABELS:
                 raise ValueError(f"unexpected label {label!r} in {path}")
+            groups = _groups(row["evidence"])
             claims.append(
                 Claim(
                     id=row["id"],
                     label=label,
                     text=row["claim"],
                     key=claim_key(row["claim"]),
-                    pages=_pages(row["evidence"]),
+                    groups=groups,
+                    pages=_pages(groups),
                 )
             )
     return claims
