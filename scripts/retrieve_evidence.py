@@ -27,7 +27,7 @@ import time
 from pathlib import Path
 
 from src.data.fever import Claim, load_claims
-from src.data.splits import drop_leaked, split_dev
+from src.data.splits import drop_leaked, holdout, split_dev
 from src.retrieval import wiki
 from src.retrieval.search import INDEX_DIR, load_index, retrieve
 
@@ -45,7 +45,14 @@ def load_split(name: str) -> list[Claim]:
         return calibration
     if name == "test":
         return test
-    return drop_leaked(load_claims(TRAIN), calibration, test)
+    train = drop_leaked(load_claims(TRAIN), calibration, test)
+    if name == "trainval":
+        # The model-selection holdout, carved from train by the same function the dataset builder
+        # used. Retrieved on its own because Phase 04 fits its sufficiency head here: loading a
+        # third fit onto the calibration split would make the calibrator and the bands optimistic
+        # along with it.
+        return holdout(train)[1]
+    return train
 
 
 def repair(path: Path) -> int:
@@ -92,7 +99,9 @@ def completed(path: Path) -> set[int]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--split", choices=("train", "calibration", "test"), default="train")
+    parser.add_argument(
+        "--split", choices=("train", "trainval", "calibration", "test"), default="train"
+    )
     parser.add_argument("--name", default=None, help="run directory under runs/")
     parser.add_argument("--pages", type=int, default=25)
     parser.add_argument("--shard", type=int, default=0)
@@ -137,7 +146,11 @@ def main() -> int:
     with open(part, "a", encoding="utf-8") as handle:
         for position, claim in enumerate(todo, start=1):
             result = retrieve(conn, index, claim.text, n=args.pages, k=STORED_K)
-            row = {"id": claim.id, "evidence": [[title, idx] for title, idx in result.refs]}
+            row = {
+                "id": claim.id,
+                "evidence": [[title, idx] for title, idx in result.refs],
+                "scores": [round(float(score), 4) for score in result.scores],
+            }
             handle.write(json.dumps(row) + "\n")
             if position % FLUSH_EVERY == 0:
                 handle.flush()
@@ -180,7 +193,7 @@ def merge(out: Path, claims: list[Claim], shards: int) -> int:
                 row = json.loads(line)
                 if row["id"] in rows:
                     raise SystemExit(f"claim {row['id']} appears in more than one shard")
-                rows[row["id"]] = row["evidence"]
+                rows[row["id"]] = row
 
     missing = [c.id for c in claims if c.id not in rows]
     if missing:
@@ -189,7 +202,7 @@ def merge(out: Path, claims: list[Claim], shards: int) -> int:
     target = out / "retrieved.jsonl"
     with open(target, "w", encoding="utf-8") as handle:
         for claim in claims:
-            handle.write(json.dumps({"id": claim.id, "evidence": rows[claim.id]}) + "\n")
+            handle.write(json.dumps(rows[claim.id]) + "\n")
     print(f"merged {len(claims):,} claims into {target}")
     return 0
 

@@ -106,3 +106,56 @@ def test_merge_refuses_an_incomplete_run(tmp_path):
     write(tmp_path / "retrieved.part0.jsonl", [{"id": 0, "evidence": []}])
     with pytest.raises(SystemExit, match="have no evidence"):
         merge(tmp_path, [FakeClaim(0), FakeClaim(2)], 1)
+
+
+def test_merge_carries_the_bm25_scores_through(tmp_path):
+    """
+    Phase 04's sufficiency features are built from these. retrieve() has always returned them and
+    only the writer dropped them, so losing them again in the merge would cost a full re-run of
+    the split to notice.
+    """
+    write(tmp_path / "retrieved.part0.jsonl", [
+        {"id": 0, "evidence": [["A", 0], ["A", 1]], "scores": [9.5, 4.25]},
+    ])
+    assert merge(tmp_path, [FakeClaim(0)], 1) == 0
+    row = json.loads((tmp_path / "retrieved.jsonl").read_text().splitlines()[0])
+    assert row["scores"] == [9.5, 4.25]
+    assert row["evidence"] == [["A", 0], ["A", 1]]
+
+
+def test_merge_still_accepts_parts_written_before_scores_existed(tmp_path):
+    """runs/evidence-train was produced by the older writer; merging it must not start failing."""
+    write(tmp_path / "retrieved.part0.jsonl", [{"id": 0, "evidence": [["A", 0]]}])
+    assert merge(tmp_path, [FakeClaim(0)], 1) == 0
+    row = json.loads((tmp_path / "retrieved.jsonl").read_text().splitlines()[0])
+    assert "scores" not in row
+    assert row["evidence"] == [["A", 0]]
+
+
+def test_trainval_is_a_declared_split_choice():
+    """The argparse choices tuple, read from the source rather than mirrored in the test."""
+    import inspect
+
+    from scripts import retrieve_evidence
+
+    source = inspect.getsource(retrieve_evidence.main)
+    assert '"train", "trainval", "calibration", "test"' in source
+
+
+@pytest.mark.slow
+def test_trainval_loads_the_model_selection_holdout():
+    """
+    Phase 04 fits its sufficiency head here. The calibration split already carries the calibrator
+    and the band thresholds, so a third fit on those same 2,000 rows would make all three
+    optimistic at once. Requires the FEVER claim files.
+    """
+    from scripts.retrieve_evidence import load_split
+
+    trainval = load_split("trainval")
+    train = load_split("train")
+    calibration = load_split("calibration")
+
+    assert len(trainval) == 5303, f"expected the Phase 02 holdout, got {len(trainval):,}"
+    trainval_keys = {c.key for c in trainval}
+    assert not (trainval_keys & {c.key for c in calibration}), "trainval overlaps calibration"
+    assert trainval_keys < {c.key for c in train}, "trainval must be carved from train"

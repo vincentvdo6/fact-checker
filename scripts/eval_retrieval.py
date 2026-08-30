@@ -72,7 +72,7 @@ def main() -> int:
     conn = wiki.connect()
     index = load_index(conn, args.index_dir)
 
-    retrieved, pages = [], []
+    retrieved, pages, scores = [], [], []
     start = time.time()
     for done, claim in enumerate(claims, start=1):
         result = retrieve(
@@ -86,6 +86,7 @@ def main() -> int:
         )
         retrieved.append(result.refs)
         pages.append(result.pages)
+        scores.append(result.scores)
         if done % 250 == 0:
             rate = done / (time.time() - start)
             print(f"  {done:,}/{len(claims):,}  {rate:.1f} claims/s", flush=True)
@@ -126,8 +127,12 @@ def main() -> int:
     )
     (out / "metrics.json").write_text(json.dumps(report.to_dict(), indent=2), encoding="utf-8")
     with open(out / "retrieved.jsonl", "w", encoding="utf-8") as handle:
-        for claim, refs in zip(claims, retrieved, strict=True):
-            row = {"id": claim.id, "evidence": [[title, idx] for title, idx in refs]}
+        for claim, refs, claim_scores in zip(claims, retrieved, scores, strict=True):
+            row = {
+                "id": claim.id,
+                "evidence": [[title, idx] for title, idx in refs],
+                "scores": [round(float(score), 4) for score in claim_scores],
+            }
             handle.write(json.dumps(row) + "\n")
 
     print(f"\n{args.split}: {len(claims):,} claims in {elapsed / 60:.1f} min")
