@@ -116,8 +116,11 @@ def main() -> int:
           f"   |   nei share {main_report.ceiling.nei_share:.3f}")
     if main_report.by_retrieval:
         b = main_report.by_retrieval
-        print(f"  gold read      {b.with_gold:.4f}  (n={b.n_with_gold:,})")
-        print(f"  gold missed    {b.without_gold:.4f}  (n={b.n_without_gold:,})"
+        def rate(value: float | None) -> str:
+            return "    n/a" if value is None else f"{value:.4f}"
+
+        print(f"  gold read      {rate(b.with_gold)}  (n={b.n_with_gold:,})")
+        print(f"  gold missed    {rate(b.without_gold)}  (n={b.n_without_gold:,})"
               "   <- near the prior means the model is reading artifacts, not evidence")
 
     if len(correctness) > 1:

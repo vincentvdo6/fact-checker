@@ -125,7 +125,15 @@ def doc_recall_at_n(pages_retrieved: Sequence[str], groups: Groups, n: int) -> b
 
 @dataclass(frozen=True, slots=True)
 class Ceiling:
-    """Best reachable accuracy given what retrieval returned. `overall` is not reportable alone."""
+    """
+    Best reachable accuracy given what retrieval returned. `overall` is not reportable alone.
+
+    It bounds *evidence-derived* accuracy, which is not the same as accuracy. A model reading
+    FEVER's claim-only artifacts is not bounded by it and can sail past: the evidence-free
+    baseline scores 0.5865 on test against a ceiling of 0.0, because it reads no evidence at all.
+    That gap is the artifact, and measuring it is the reason the baseline is a separate control
+    rather than a footnote.
+    """
 
     verifiable: float    # identical to strict recall; the name later phases cite
     overall: float       # 1 - verifiable_share * (1 - verifiable)

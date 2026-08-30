@@ -136,3 +136,21 @@ def test_a_label_outside_the_verdict_space_is_rejected():
 
 def test_the_report_is_json_serializable():
     json.dumps(report([S, C, N], [S, C, N], gold_read=[True, False, None]).to_dict())
+
+
+def test_an_empty_retrieval_bucket_is_undefined_not_zero():
+    """
+    claim_only reads no evidence, so nothing lands in with_gold. Reporting 0.0 there would read
+    as the model getting every gold-read claim wrong, and that zero travels into metrics.json.
+    """
+    labels = ["supported", "contradicted", "not_enough_evidence"]
+    report = evaluate_verdicts(
+        labels, list(labels), variant="claim_only",
+        ceiling=Ceiling(verifiable=0.0, overall=0.0, nei_share=1 / 3),
+        gold_read=[False, False, None],
+    )
+    assert report.by_retrieval.n_with_gold == 0
+    assert report.by_retrieval.with_gold is None
+    assert report.by_retrieval.to_dict()["with_gold"] is None
+    # The populated half still reports a number.
+    assert report.by_retrieval.without_gold == 1.0

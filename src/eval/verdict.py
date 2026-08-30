@@ -53,8 +53,11 @@ class ByRetrieval:
     real model.
     """
 
-    with_gold: float
-    without_gold: float
+    # None, not 0.0, when the bucket is empty: an accuracy over no claims is undefined, and
+    # a zero there reads as the model getting every one of them wrong. claim_only reads no
+    # evidence at all, so its with_gold bucket is always empty.
+    with_gold: float | None
+    without_gold: float | None
     n_with_gold: int
     n_without_gold: int
 
@@ -148,8 +151,8 @@ def evaluate_verdicts(
         with_gold = [ok for ok, read in hits if read]
         without_gold = [ok for ok, read in hits if not read]
         by_retrieval = ByRetrieval(
-            with_gold=sum(with_gold) / len(with_gold) if with_gold else 0.0,
-            without_gold=sum(without_gold) / len(without_gold) if without_gold else 0.0,
+            with_gold=sum(with_gold) / len(with_gold) if with_gold else None,
+            without_gold=sum(without_gold) / len(without_gold) if without_gold else None,
             n_with_gold=len(with_gold),
             n_without_gold=len(without_gold),
         )
