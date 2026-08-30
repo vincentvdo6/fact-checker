@@ -61,13 +61,17 @@ def undecorate(markdown: str) -> str:
     return "\n".join(line[2:] if line.startswith("# ") else line.lstrip("#") for line in markdown.splitlines())
 
 
-def notebook(source: str, variant: str) -> dict:
+def notebook(source: str, variant: str, *, smoke: bool = False) -> dict:
     config = VARIANTS[variant]
     body = source
     body = body.replace("# # Verdict model -- retrieved", f"# # Verdict model -- {HEADINGS[variant]}")
     body = body.replace('    variant="retrieved",', f'    variant="{config["variant"]}",')
     body = body.replace("    max_length=512,", f"    max_length={config['max_length']},")
     body = body.replace("    time_budget_h=10.5,", f"    time_budget_h={config['time_budget_h']},")
+    # The committed notebook is the real run. Smoke is a rehearsal of the failure paths -- 2,048
+    # rows, 60 steps, one deliberate kill and resume -- so it is generated on demand into a
+    # scratch directory rather than being the artifact the repository ships.
+    body = body.replace("    smoke=True,", f"    smoke={smoke},")
 
     return {
         "cells": [
@@ -91,13 +95,19 @@ def notebook(source: str, variant: str) -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true", help="fail if the notebooks are stale")
+    parser.add_argument("--smoke", action="store_true", help="rehearsal notebooks; requires --out")
+    parser.add_argument("--out", default=str(OUT), help="destination directory (default notebooks/)")
     args = parser.parse_args()
+    if args.smoke and Path(args.out) == OUT:
+        raise SystemExit("--smoke writes rehearsal notebooks; point --out at a scratch directory")
 
     source = TEMPLATE.read_text(encoding="utf-8")
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
     stale: list[str] = []
     for variant in VARIANTS:
-        path = OUT / f"kaggle_verdict_{variant}.ipynb"
-        rendered = json.dumps(notebook(source, variant), indent=1) + "\n"
+        path = out / f"kaggle_verdict_{variant}.ipynb"
+        rendered = json.dumps(notebook(source, variant, smoke=args.smoke), indent=1) + "\n"
         if args.check:
             if not path.exists() or path.read_text(encoding="utf-8") != rendered:
                 stale.append(path.name)

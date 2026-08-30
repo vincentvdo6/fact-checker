@@ -95,3 +95,22 @@ def test_the_template_names_the_dataset_to_attach():
     text = TEMPLATE.read_text(encoding="utf-8")
     assert "attach the fever-verdict-v1 dataset" in text
     assert "smoke" in text and "resume" in text
+
+
+def test_the_committed_notebooks_are_full_runs_not_rehearsals():
+    """
+    Smoke trains 2,048 rows for 60 steps. A notebook committed with smoke on would run the whole
+    phase as a rehearsal and export an artifact the installer then refuses, after the GPU hours
+    are already spent.
+    """
+    source = TEMPLATE.read_text(encoding="utf-8")
+    for variant in VARIANTS:
+        cfg = json.dumps(notebook(source, variant))
+        assert "smoke=False" in cfg, f"{variant} is committed as a rehearsal"
+        assert "smoke=True" not in cfg
+
+
+def test_rehearsal_mode_turns_smoke_on():
+    source = TEMPLATE.read_text(encoding="utf-8")
+    cfg = json.dumps(notebook(source, "retrieved", smoke=True))
+    assert "smoke=True" in cfg and "smoke=False" not in cfg
