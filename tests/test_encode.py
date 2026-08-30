@@ -207,4 +207,54 @@ def test_gold_rows_stay_within_budget_after_shuffling():
     row = {"claim": "a claim", "evidence": rows, "gold": [ev("Page_A", 0, "sA0 w w w w")]}
     for budget in range(20, 90, 6):
         chosen = select_evidence(row, "gold", budget, words, rng=random.Random(0))
-        assert words(*build_input(row["claim"], chosen)) <= budget or len(chosen) == 1
+        assert words(*build_input(row["claim"], chosen)) <= budget
+
+
+def test_shuffling_actually_reorders():
+    """
+    The one thing shuffle_pages exists to do. Every other test here passes against an identity
+    function, so without this the shuffle could silently become a no-op and NB3's oracle would
+    carry back the exact position tell the shuffle was written to remove.
+    """
+    rows = [ev(f"Page_{p}", i, "w w") for p in "ABCDE" for i in range(2)]
+    original = tuple((r[0], r[1]) for r in rows)
+    orders = {tuple((r[0], r[1]) for r in shuffle_pages(rows, random.Random(s))) for s in range(8)}
+    assert len(orders) > 1, "shuffle_pages is not shuffling"
+    assert any(order != original for order in orders)
+
+
+def test_the_shuffle_moves_gold_off_the_front():
+    """The tell in its own terms: gold must not sit at position 0 under every seed."""
+    row = {
+        "claim": "a claim",
+        "evidence": [ev(f"Page_{p}", i, "w w w") for p in "ABCD" for i in range(3)],
+        "gold": [ev("Gold_Page", 0, "the gold sentence")],
+    }
+    firsts = {
+        tuple(select_evidence(row, "gold", 200, words, rng=random.Random(s))[0][:2])
+        for s in range(8)
+    }
+    assert len(firsts) > 1, "gold arrives first under every seed"
+
+
+def test_shuffling_never_increases_the_token_count():
+    """
+    It permutes runs, not pages, so a page split across two runs can merge and the count can
+    fall. What must never happen is a rise, which would push a packed set past its budget.
+    """
+    rows = [ev("A", 0, "w w"), ev("A", 1, "w w"), ev("B", 0, "w w"), ev("A", 5, "w w")]
+    before = words(*build_input("c", rows))
+    for seed in range(12):
+        assert words(*build_input("c", shuffle_pages(rows, random.Random(seed)))) <= before
+
+
+def test_gold_survives_a_budget_too_small_to_pack():
+    """
+    Without the floor, a verifiable claim gets zero evidence while NOT ENOUGH INFO keeps a full
+    retrieved set -- reintroducing the sentence-count artifact from the other direction.
+    """
+    row = {"claim": "a claim", "evidence": sentences(10), "gold": [ev("G", 0, "gold sentence")]}
+    assert pack(row["claim"], row["evidence"], 1, words) == 0
+    chosen = select_evidence(row, "gold", 1, words)
+    assert len(chosen) == 1
+    assert (chosen[0][0], chosen[0][1]) == ("G", 0)

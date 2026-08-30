@@ -20,7 +20,8 @@ the achievable ceiling stays a measurement rather than an assumption.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import random
+from collections.abc import Callable, Sequence
 
 TEMPLATE_ID = "per_page_grouped_v1"
 
@@ -39,7 +40,8 @@ FEVER_TO_LABEL = {
 # would otherwise consume a whole budget on their own.
 MAX_SENTENCE_WORDS = 64
 
-Evidence = Sequence[Sequence]   # rows of (title, sentence_index, text)
+Evidence = Sequence[Sequence]              # rows of (title, sentence_index, text)
+Measure = Callable[[str, str], int]        # a tokenizer's length, or a word count in tests
 
 
 def _clip(text: str) -> str:
@@ -77,15 +79,18 @@ def build_input(claim: str, evidence: Evidence) -> tuple[str, str]:
     return claim, render(evidence)
 
 
-def shuffle_pages(rows: list, rng) -> list:
+def shuffle_pages(rows: Sequence[Sequence], rng: random.Random) -> list:
     """
-    Permute whole pages, keeping each page's sentences together and in order.
+    Permute the title runs, so gold stops always arriving first.
 
     Shuffling individual rows would break the consecutive-title runs that render() collapses,
-    adding one title repetition per break -- measured at +12 tokens on a three-page fixture, which
-    is enough to push a set packed to its budget over it, where the tokenizer truncates silently.
-    Permuting groups leaves every page contributing exactly one title, so the token count is
-    unchanged while gold no longer always arrives first.
+    adding one title repetition per break -- measured at +12 tokens on a three-page fixture,
+    enough to push a packed set over its budget where the tokenizer truncates in silence.
+
+    This permutes *runs*, not pages. A page occupying two non-adjacent runs -- ordinary on the
+    gold path, where the fill arrives in retrieval order -- may end up with its runs adjacent and
+    merged. So the token count never increases, but it is not invariant either: it can fall.
+    pack()'s measurement is therefore an upper bound after a shuffle, never an overrun.
     """
     groups: list[list] = []
     for row in rows:
@@ -97,7 +102,7 @@ def shuffle_pages(rows: list, rng) -> list:
     return [row for group in groups for row in group]
 
 
-def pack(claim: str, evidence: Evidence, budget: int, measure) -> int:
+def pack(claim: str, evidence: Evidence, budget: int, measure: Measure) -> int:
     """
     How many leading evidence rows fit alongside the claim, given a budget and a length function.
 
@@ -123,7 +128,13 @@ def pack(claim: str, evidence: Evidence, budget: int, measure) -> int:
     return low
 
 
-def select_evidence(row: dict, variant: str, budget: int, measure, rng=None) -> list:
+def select_evidence(
+    row: dict,
+    variant: str,
+    budget: int,
+    measure: Measure,
+    rng: random.Random | None = None,
+) -> list:
     """
     The rows of evidence this variant shows the model.
 
@@ -152,8 +163,16 @@ def select_evidence(row: dict, variant: str, budget: int, measure, rng=None) -> 
         # NOT ENOUGH INFO has no gold by construction, so it keeps the retrieved condition.
         return retrieved[: pack(claim, retrieved, budget, measure)]
 
+    # Titles are compared as given. Gold arrives from FEVER as released, which is NFD for 170 of
+    # the 14,533 distinct titles, while retrieval holds the store's composed form -- so the
+    # dataset builder must NFC both sides before a row reaches here, or the same page appears
+    # twice under two visually identical titles and costs an evidence slot.
     reserved = {(title, index) for title, index, _ in gold}
     fill = [ref for ref in retrieved if (ref[0], ref[1]) not in reserved]
     candidates = list(gold) + fill
+    # The floor keeps gold whole even when it alone overruns: without it a verifiable claim gets
+    # zero evidence while NOT ENOUGH INFO keeps a full retrieved set, which is the sentence-count
+    # artifact this function exists to prevent. The tokenizer then truncates the tail, so the
+    # exported count overstates what the model read -- 1 of 13,332 dev claims, and worth the trade.
     chosen = candidates[: max(len(gold), pack(claim, candidates, budget, measure))]
     return shuffle_pages(chosen, rng) if rng is not None else chosen
