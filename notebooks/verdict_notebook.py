@@ -266,18 +266,26 @@ def load_checkpoint(model, optimizer, scheduler, scaler):
 
 
 # %%
-def evaluate(model, dataset, rows: list[dict]) -> tuple[float, list[dict]]:
-    """Accuracy plus one prediction row per claim, carrying fp32 logits for Phase 03."""
+def evaluate(model, dataset, rows: list[dict], *, precise: bool = False) -> tuple[float, list[dict]]:
+    """
+    Accuracy plus one prediction row per claim.
+
+    `precise` runs the forward pass in fp32 rather than under autocast. Phase 03 fits a
+    temperature on these logits, and under autocast they are *born* fp16: casting afterwards
+    widens the dtype but cannot recover the precision, which is roughly three decimal digits
+    and coarsest in the tails calibration cares most about. The periodic trainval evals only
+    ever take an argmax, so they keep autocast and stay fast; the exported splits do not.
+    """
     model.eval()
-    loader = DataLoader(dataset, batch_size=CFG["batch"] * 2)
+    # fp32 activations are twice the size, and this pass runs at the very end of a long
+    # session -- an OOM here would cost the export, not a retry.
+    loader = DataLoader(dataset, batch_size=CFG["batch"] if precise else CFG["batch"] * 2)
     predictions, correct, offset = [], 0, 0
     with torch.no_grad():
         for input_ids, mask, labels, used in loader:
             input_ids, mask = input_ids.to(DEVICE), mask.to(DEVICE)
-            with torch.autocast("cuda", dtype=torch.float16, enabled=DEVICE == "cuda"):
+            with torch.autocast("cuda", dtype=torch.float16, enabled=not precise and DEVICE == "cuda"):
                 logits = model(input_ids=input_ids, attention_mask=mask).logits
-            # float32 on the way out: Phase 03 fits a temperature on these, and a softmax at
-            # fp16 and back loses information nothing downstream can recover.
             # A non-finite logit would argmax to class 0 in silence and write NaN into the
             # predictions file that Phase 03 calibrates on -- which is also invalid JSON.
             assert torch.isfinite(logits).all(), "non-finite logits; rerun in fp32"
@@ -292,6 +300,7 @@ def evaluate(model, dataset, rows: list[dict]) -> tuple[float, list[dict]]:
                     "pred": LABELS[predicted],
                     "logits": [float(v) for v in logits[i]],
                     "n_evidence_used": int(used[i]),
+                    "token_len": int(mask[i].sum()),
                     "gold_resolved": row["gold_resolved"],
                 })
             offset += logits.size(0)
@@ -345,7 +354,7 @@ def train():
                 # scaler handles by skipping the step and halving the scale. The forward loss
                 # stays finite throughout, so a collapsing scale is the only visible symptom.
                 log.append({
-                    "step": step, "loss": float(loss),
+                    "step": step, "loss": loss.detach().item(),
                     "lr": scheduler.get_last_lr()[0], "scale": float(scaler.get_scale()),
                 })
 
@@ -466,7 +475,7 @@ if (WORK / "best").exists():
 
 results = {}
 for split in ("calibration", "test"):
-    accuracy, predictions = evaluate(model, ENCODED[split], SPLITS[split])
+    accuracy, predictions = evaluate(model, ENCODED[split], SPLITS[split], precise=True)
     results[split] = accuracy
     with open(WORK / f"predictions_{split}.jsonl", "w", encoding="utf-8") as handle:
         for row in predictions:
