@@ -29,7 +29,19 @@ from transformers import AutoConfig, AutoModelForSequenceClassification, AutoTok
 
 print("torch", torch.__version__, "| cuda", torch.cuda.is_available())
 if torch.cuda.is_available():
-    print("device", torch.cuda.get_device_name(0))
+    name = torch.cuda.get_device_name(0)
+    major, minor = torch.cuda.get_device_capability()
+    arches = torch.cuda.get_arch_list()
+    print(f"device {name}  sm_{major}{minor}")
+    # Kaggle hands out a P100 by default, and its own torch build dropped sm_60 -- so the
+    # default accelerator cannot run the default PyTorch. Left unchecked this surfaces as
+    # "no kernel image is available" only once a tensor reaches the GPU, which on a real run
+    # is a quarter of an hour of tokenizing wasted first. Fail in seconds instead, and say
+    # what to change: the accelerator is a UI setting, not something the API can pass.
+    assert f"sm_{major}{minor}" in arches, (
+        f"{name} is sm_{major}{minor}; this torch supports {arches}. "
+        "Set Settings -> Accelerator to GPU T4 x2 and re-run."
+    )
 
 # %%
 CFG = dict(
