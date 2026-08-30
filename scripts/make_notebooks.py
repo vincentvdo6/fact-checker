@@ -102,7 +102,9 @@ def main() -> int:
             if not path.exists() or path.read_text(encoding="utf-8") != rendered:
                 stale.append(path.name)
             continue
-        path.write_text(rendered, encoding="utf-8")
+        # Explicit LF so the working tree matches what git stores; on Windows the default
+        # would dirty all three files with line-ending churn on every regeneration.
+        path.write_text(rendered, encoding="utf-8", newline="\n")
         print(f"  wrote {path.name}  ({len(rendered) / 1024:.0f} KB)")
 
     if args.check:
