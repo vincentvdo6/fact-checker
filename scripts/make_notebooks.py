@@ -46,11 +46,17 @@ DATASETS = {
     "claim_only": "fever-verdict-v1",
     "gold": "fever-verdict-v1",
     "retrieved_grounded": "fever-verdict-v2",
+    "retrieved_dropped": "fever-verdict-v3",
+    "claim_only_grounded": "fever-verdict-v2",
 }
 
 # Kernels that reuse another variant's notebook unchanged. retrieved_grounded differs only in the
 # data it is pointed at, so generating a fourth identical notebook would invite the two to drift.
-NOTEBOOK_FOR = {"retrieved_grounded": "retrieved"}
+NOTEBOOK_FOR = {
+    "retrieved_grounded": "retrieved",
+    "retrieved_dropped": "retrieved",
+    "claim_only_grounded": "claim_only",
+}
 
 
 def kernel_metadata(name: str, owner: str) -> dict:
