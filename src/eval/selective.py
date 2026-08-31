@@ -223,3 +223,36 @@ def evaluate_selective(
         at_risk={f"{r:.2f}": coverage_at_risk(confidence, correct, r) for r in risks},
         at_coverage={f"{c:.2f}": risk_at_coverage(confidence, correct, c) for c in coverages},
     )
+
+
+def roc_auc(score: np.ndarray, positive: np.ndarray) -> float:
+    """
+    Probability a random positive outscores a random negative, ties counting a half.
+
+    Computed from rank sums rather than by sweeping thresholds, which makes tie handling exact
+    rather than a function of how finely the sweep happened to step. That matters here because a
+    sufficiency model over a handful of features produces many identical scores, and a sweep would
+    quietly credit half of them.
+
+    Undefined when one class is absent -- there is no pair to compare -- so it raises rather than
+    returning 0.5, which would read as "no signal" instead of "no measurement".
+    """
+    score = np.asarray(score, dtype=np.float64)
+    positive = np.asarray(positive, dtype=bool)
+    if score.shape != positive.shape:
+        raise ValueError(f"got {score.shape} scores and {positive.shape} labels")
+    hits, misses = int(positive.sum()), int((~positive).sum())
+    if hits == 0 or misses == 0:
+        raise ValueError(f"AUC needs both classes; got {hits} positive and {misses} negative")
+
+    order = np.argsort(score, kind="stable")
+    ranks = np.empty(len(score), dtype=np.float64)
+    ranks[order] = np.arange(1, len(score) + 1, dtype=np.float64)
+    # Average the ranks inside each tied run, which is what makes a tie worth exactly a half.
+    sorted_scores = score[order]
+    start = 0
+    for stop in range(1, len(score) + 1):
+        if stop == len(score) or sorted_scores[stop] != sorted_scores[start]:
+            ranks[order[start:stop]] = (start + stop + 1) / 2
+            start = stop
+    return float((ranks[positive].sum() - hits * (hits + 1) / 2) / (hits * misses))

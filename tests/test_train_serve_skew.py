@@ -85,3 +85,29 @@ def test_exported_token_lengths_match_this_repository(variant_dir: Path):
         checked += 1
 
     assert checked > 0, "no exported claim matched the local test split"
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("variant_dir", installed() or [pytest.param(None, marks=pytest.mark.skip(
+    reason="no installed artifact; run scripts.install_artifacts first"))])
+def test_recomputed_budgets_match_the_exported_counts(variant_dir: Path):
+    """
+    Phase 04 fits its sufficiency head on trainval, which the notebook never scored, so
+    `n_evidence_used` has to be recomputed there through the shipped encoder. This checks that
+    recomputation against a split where the true counts exist -- if it drifts, the sufficiency
+    target is computed over a different prefix than the model actually read, and every AUC in
+    Phase 04 describes a system nobody ran.
+    """
+    from scripts.measure_sufficiency import budgets_from_encoding
+
+    contract = EncoderContract.from_dict(json.loads((variant_dir / CONTRACT_FILE).read_text()))
+    with open(variant_dir / "predictions_calibration.jsonl", encoding="utf-8") as handle:
+        exported = {row["id"]: row["n_evidence_used"] for row in map(json.loads, handle)}
+
+    rows = rows_for("calibration")[:CHECK_ROWS]
+    budgets = budgets_from_encoding(rows, contract.variant, contract.max_length, contract.seed)
+    for row, budget in zip(rows, budgets, strict=True):
+        assert budget == exported[row["id"]], (
+            f"claim {row['id']}: recomputed {budget} sentences, the notebook read "
+            f"{exported[row['id']]}. The sufficiency target would cover the wrong prefix."
+        )
