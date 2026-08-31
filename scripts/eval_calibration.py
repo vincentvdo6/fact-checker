@@ -44,13 +44,14 @@ from src.eval.calibration import evaluate_calibration
 from src.eval.retrieval import recall_at_k
 from src.eval.selective import evaluate_selective
 from src.eval.stats import paired_bootstrap
+from src.verdict.contract import installed_variants
 from src.verdict.encode import LABELS
 from src.verdict.labels import Verdict
 
 MODELS = Path("models/verdict")
 DEV = "data/fever/shared_task_dev.jsonl"
 RUNS = Path("runs")
-VARIANTS = ("retrieved", "claim_only", "gold")
+
 NEI_INDEX = LABELS.index(Verdict.NOT_ENOUGH_EVIDENCE.value)
 
 # Phase 02, quoted beside every number here so a gain is read against the right yardstick.
@@ -128,7 +129,7 @@ def main() -> int:
 
     root = Path(args.models)
     available = [
-        v for v in VARIANTS
+        v for v in installed_variants(args.models)
         if (root / v / f"predictions_{args.split}.jsonl").exists() and (root / v / "calibration.json").exists()
     ]
     if not available:

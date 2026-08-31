@@ -32,11 +32,12 @@ from src.calibration.bands import BAND_ORDER, fit_bands
 from src.calibration.crossfit import out_of_fold, select
 from src.calibration.scaling import Isotonic, Temperature, Uncalibrated, VectorScaling
 from src.eval.calibration import evaluate_calibration
+from src.verdict.contract import installed_variants
 from src.verdict.encode import LABELS
 
 MODELS = Path("models/verdict")
 CALIBRATION_FILE = "calibration.json"
-VARIANTS = ("retrieved", "claim_only", "gold")
+
 
 # Uncalibrated is a candidate on purpose: if it wins out-of-fold, the honest thing is to ship no
 # calibration rather than a transform that made the split it was fitted on look better.
@@ -69,7 +70,10 @@ def main() -> int:
     args = parser.parse_args()
 
     root = Path(args.models)
-    available = [v for v in VARIANTS if (root / v / "predictions_calibration.jsonl").exists()]
+    available = [
+        v for v in installed_variants(root)
+        if (root / v / "predictions_calibration.jsonl").exists()
+    ]
     if not available:
         raise SystemExit(
             f"no calibration predictions under {root}; install an artifact first:\n"

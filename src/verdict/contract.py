@@ -78,3 +78,24 @@ class EncoderContract:
             mine, theirs = getattr(self, field), getattr(other, field)
             if mine != theirs:
                 raise ValueError(f"contract mismatch on {field}: expected {mine!r}, artifact has {theirs!r}")
+
+
+# The three Phase 02 variants, in the order reports read best: the headline model first, then the
+# two controls that make its number interpretable.
+KNOWN_VARIANTS: tuple[str, ...] = ("retrieved", "claim_only", "gold")
+
+
+def installed_variants(root: str | Path) -> list[str]:
+    """
+    Every installed artifact, known variants first and anything else after, alphabetically.
+
+    Discovered rather than hard-coded because Phase 05 installs a second model trained on
+    regrounded data beside the Phase 02 control. A fixed tuple would silently omit it from every
+    report -- the comparison would simply not appear, with nothing raising to say so.
+    """
+    directory = Path(root)
+    if not directory.exists():
+        return []
+    found = {p.name for p in directory.iterdir() if (p / CONTRACT_FILE).exists()}
+    ordered = [name for name in KNOWN_VARIANTS if name in found]
+    return ordered + sorted(found - set(ordered))

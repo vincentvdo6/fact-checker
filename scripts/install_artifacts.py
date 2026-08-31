@@ -77,6 +77,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("archive", help="artifacts_<variant>_v1.zip downloaded from Kaggle")
     parser.add_argument("--models", default=str(MODELS))
+    parser.add_argument(
+        "--as", dest="install_as", default=None,
+        help="install under this name instead of the contract's variant, so a second model "
+             "trained on different data sits beside the control rather than over it",
+    )
     args = parser.parse_args()
 
     path = Path(args.archive)
@@ -85,12 +90,17 @@ def main() -> int:
 
     with zipfile.ZipFile(path) as archive:
         contract, metrics = check(archive)
-        dest = Path(args.models) / contract.variant
+        # The contract still says which encoder variant this is; the directory says which run.
+        # Phase 05 trains the same "retrieved" variant on regrounded data, and installing it
+        # over the Phase 02 control would destroy the only baseline it is measured against.
+        dest = Path(args.models) / (args.install_as or contract.variant)
         dest.mkdir(parents=True, exist_ok=True)
         archive.extractall(dest)
 
     contract.save(dest / CONTRACT_FILE)
     print(f"installed {contract.variant} to {dest}")
+    if args.install_as and args.install_as != contract.variant:
+        print(f"  installed as {args.install_as}; the contract still declares {contract.variant}")
     print(f"  base       {contract.base_model} @ {contract.base_revision}")
     print(f"  max_length {contract.max_length}   template {contract.template_id}")
     print(f"  steps      {metrics['steps']:,} of {metrics['planned_steps']:,}"

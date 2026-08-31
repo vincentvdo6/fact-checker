@@ -24,12 +24,13 @@ from src.data.splits import split_dev
 from src.eval.retrieval import Ceiling, recall_at_k
 from src.eval.stats import mcnemar, paired_bootstrap
 from src.eval.verdict import evaluate_verdicts
+from src.verdict.contract import installed_variants
 from src.verdict.encode import FEVER_TO_LABEL
 
 MODELS = Path("models/verdict")
 DEV = "data/fever/shared_task_dev.jsonl"
 RUNS = Path("runs")
-VARIANTS = ("retrieved", "claim_only", "gold")
+
 
 
 def read_predictions(path: Path) -> dict[int, dict]:
@@ -74,7 +75,7 @@ def main() -> int:
             retrieved[row["id"]] = row["evidence"]
 
     available = {}
-    for variant in VARIANTS:
+    for variant in installed_variants(args.models):
         path = Path(args.models) / variant / f"predictions_{args.split}.jsonl"
         if path.exists():
             available[variant] = read_predictions(path)
