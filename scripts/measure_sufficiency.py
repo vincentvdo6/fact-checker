@@ -33,7 +33,6 @@ from __future__ import annotations
 import argparse
 import gzip
 import json
-import random
 import sys
 from pathlib import Path
 
@@ -52,7 +51,7 @@ from src.retrieval.features import (
     retrieval_features,
     verdict_features,
 )
-from src.verdict.encode import select_evidence
+from src.verdict.budgets import budgets_for
 from src.verdict.labels import Verdict
 
 DATA = Path("data/kaggle/fever-verdict-v1")
@@ -87,22 +86,14 @@ def read_scores(directory: Path) -> dict[int, list[float]]:
 
 
 def budgets_from_encoding(rows: list[dict], variant: str, max_length: int, seed: int) -> list[int]:
-    """
-    How many sentences the model would have read, recomputed through the shipped encoder.
-
-    trainval was never scored by the notebook, so `n_evidence_used` does not exist for it. This
-    reproduces it exactly the way `tests/test_train_serve_skew.py` verifies the exported counts:
-    one Random advanced across the split in file order, the same as the notebook's encode().
-    """
-    from transformers import AutoTokenizer
-
-    tokenizer = AutoTokenizer.from_pretrained(str(MODELS / variant / "model_v1"))
-
-    def measure(first: str, second: str) -> int:
-        return len(tokenizer(first, second)["input_ids"])
-
-    rng = random.Random(seed)
-    return [len(select_evidence(row, variant, max_length, measure, rng)) for row in rows]
+    """The encoder's packing budget per row; see src/verdict/budgets.py for why it is recomputed."""
+    return budgets_for(
+        rows,
+        variant=variant,
+        max_length=max_length,
+        seed=seed,
+        tokenizer_source=str(MODELS / variant / "model_v1"),
+    )
 
 
 def assemble(rows: list[dict], scores: dict[int, list[float]], budgets: list[int],

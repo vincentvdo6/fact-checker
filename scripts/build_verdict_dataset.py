@@ -22,11 +22,13 @@ from src.data.fever import NOT_ENOUGH_INFO, Claim, load_claims
 from src.data.splits import drop_leaked, holdout, split_dev
 from src.eval.retrieval import recall_at_k
 from src.retrieval import wiki
+from src.verdict.budgets import budgets_for
 from src.verdict.dataset import (
     Row,
     SentenceStore,
     assert_splits_disjoint,
     build_rows,
+    reground,
     sha256,
     validate,
     write_rows,
@@ -81,6 +83,13 @@ def main() -> int:
     parser.add_argument("--train-run", default="evidence-train")
     parser.add_argument("--dest", default=str(DEST))
     parser.add_argument("--limit-train", type=int, default=0, help="smaller train split, for a dry run")
+    parser.add_argument(
+        "--reground", action="store_true",
+        help="relabel train and trainval rows whose evidence cannot support their label",
+    )
+    parser.add_argument("--base-model", default="microsoft/deberta-v3-base")
+    parser.add_argument("--max-length", type=int, default=512)
+    parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
     calibration_claims, test_claims = split_dev(load_claims(DEV))
@@ -99,6 +108,7 @@ def main() -> int:
     conn = wiki.connect()
     store = SentenceStore(conn)
     by_split: dict[str, list[Row]] = {}
+    regrounded: dict[str, dict] = {}
     claims_by_split: dict[str, dict[int, Claim]] = {}
     cached: dict[Path, dict[int, list]] = {}
 
@@ -113,9 +123,27 @@ def main() -> int:
         print(f"{split}: {len(present):,} of {len(claims):,} claims have evidence", flush=True)
 
         rows = list(build_rows(present, retrieved, store))
-        validate(rows, {c.id: c for c in present}, split=split)
+        claims = {c.id: c for c in present}
+
+        # Only the training splits. Relabelling calibration or test would grade the model against
+        # our own relabelling and make every number since Phase 02 incomparable while still
+        # computing -- so the split list is spelled out here rather than inferred from a flag.
+        if args.reground and split in ("train", "trainval"):
+            budgets = budgets_for(
+                [row.to_dict() for row in rows],
+                variant="retrieved",
+                max_length=args.max_length,
+                seed=args.seed,
+                tokenizer_source=args.base_model,
+            )
+            rows, stats = reground(rows, claims, dict(zip([r.id for r in rows], budgets, strict=True)))
+            regrounded[split] = stats
+            print(f"  regrounded {stats['moved']:,} of {stats['verifiable_before']:,} verifiable "
+                  f"({stats['share_of_verifiable']:.1%})", flush=True)
+
+        validate(rows, claims, split=split, regrounded=split in regrounded)
         by_split[split] = rows
-        claims_by_split[split] = {c.id: c for c in present}
+        claims_by_split[split] = claims
 
     assert_splits_disjoint(by_split, claims_by_split)
 
@@ -128,6 +156,7 @@ def main() -> int:
         "fever_to_label": FEVER_TO_LABEL,
         "splits": {},
         "files": {},
+        "regrounded": regrounded or None,
     }
 
     for split, rows in by_split.items():

@@ -13,7 +13,7 @@ from __future__ import annotations
 import pytest
 
 from src.data.fever import NOT_ENOUGH_INFO, Claim
-from src.verdict.dataset import Row, reground
+from src.verdict.dataset import Row, reground, validate
 
 SUPPORTED, CONTRADICTED, NEI = "supported", "contradicted", "not_enough_evidence"
 
@@ -151,3 +151,53 @@ def test_a_missing_claim_is_refused():
     rows = [row(1, SUPPORTED, [("A", 0)], gold=[("A", 0)])]
     with pytest.raises(ValueError, match="missing from the claim map"):
         reground(rows, {}, {1: 1})
+
+
+# --- validate must permit exactly one departure from FEVER's labels ----------------------------
+
+def rows_and_claims(row_label: str, claim_label: str):
+    rows = [row(1, row_label, [("A", 0)], gold=() if row_label == NEI else [("A", 0)])]
+    return rows, {1: claim(1, claim_label, [] if claim_label == NOT_ENOUGH_INFO else [[("A", 0)]])}
+
+
+def test_validate_rejects_a_relabelled_row_unless_told_regrounding_happened():
+    """The guard stays on by default, so a stray relabel in an ordinary build still raises."""
+    rows, claims = rows_and_claims(NEI, "SUPPORTS")
+    with pytest.raises(ValueError, match="does not match"):
+        validate(rows, claims, split="train")
+
+
+def test_validate_accepts_a_verifiable_claim_moved_to_nei_when_regrounded():
+    rows, claims = rows_and_claims(NEI, "SUPPORTS")
+    validate(rows, claims, split="train", regrounded=True)
+
+
+def test_validate_still_rejects_a_swapped_verdict_when_regrounded():
+    """
+    Regrounding permits one direction only. A SUPPORTED row on a REFUTES claim is a bug whether or
+    not the split was regrounded, and it is the kind that trains a model on inverted supervision.
+    """
+    rows, claims = rows_and_claims(SUPPORTED, "REFUTES")
+    with pytest.raises(ValueError, match="does not match"):
+        validate(rows, claims, split="train", regrounded=True)
+
+
+def test_validate_still_rejects_a_claim_moved_out_of_nei_when_regrounded():
+    """The reverse direction invents evidence for a claim FEVER says has none."""
+    rows, claims = rows_and_claims(SUPPORTED, NOT_ENOUGH_INFO)
+    with pytest.raises(ValueError, match="does not match"):
+        validate(rows, claims, split="train", regrounded=True)
+
+
+def test_the_builder_regrounds_only_the_training_splits():
+    """
+    Relabelling calibration or test would grade the model against our own relabelling, and every
+    number since Phase 02 would become incomparable while still computing.
+    """
+    import inspect
+
+    from scripts import build_verdict_dataset
+
+    source = inspect.getsource(build_verdict_dataset.main)
+    assert 'split in ("train", "trainval")' in source
+    assert "args.reground" in source

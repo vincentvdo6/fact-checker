@@ -113,13 +113,20 @@ def build_rows(claims: Iterable[Claim], retrieved: dict[int, list], store: Sente
         )
 
 
-def validate(rows: list[Row], claims: dict[int, Claim], *, split: str) -> None:
+def validate(
+    rows: list[Row], claims: dict[int, Claim], *, split: str, regrounded: bool = False
+) -> None:
     """
     Everything that must hold before a byte is written. Raises on the first failure, naming it.
 
     These are the mistakes that do not announce themselves: a duplicated claim inflates a score,
     an empty evidence list trains on nothing, and a gold ref outside a claim's own groups makes
     the oracle an oracle for some other claim.
+
+    `regrounded` permits exactly one departure from FEVER's labels: a verifiable claim may carry
+    NEI, because `reground` moved it there when the evidence could not support the verdict. It
+    permits nothing else -- a SUPPORTED row on a REFUTES claim is still a bug, and so is the
+    reverse direction, a claim relabelled *out* of NEI.
     """
     seen: set[int] = set()
     for row in rows:
@@ -130,8 +137,17 @@ def validate(rows: list[Row], claims: dict[int, Claim], *, split: str) -> None:
         claim = claims.get(row.id)
         if claim is None:
             raise ValueError(f"{split}: claim {row.id} is not in the split")
-        if row.label != FEVER_TO_LABEL[claim.label]:
-            raise ValueError(f"{split}: claim {row.id} label {row.label} does not match {claim.label}")
+        expected = FEVER_TO_LABEL[claim.label]
+        if row.label != expected:
+            moved_to_nei = (
+                regrounded
+                and row.label == FEVER_TO_LABEL[NOT_ENOUGH_INFO]
+                and claim.label != NOT_ENOUGH_INFO
+            )
+            if not moved_to_nei:
+                raise ValueError(
+                    f"{split}: claim {row.id} label {row.label} does not match {claim.label}"
+                )
         if not row.evidence:
             raise ValueError(f"{split}: claim {row.id} has no evidence")
 
@@ -140,7 +156,9 @@ def validate(rows: list[Row], claims: dict[int, Claim], *, split: str) -> None:
             stray = {(t, i) for t, i, _ in row.gold} - allowed
             if stray:
                 raise ValueError(f"{split}: claim {row.id} gold {sorted(stray)} is outside its own groups")
-        elif row.gold_resolved and claim.label != NOT_ENOUGH_INFO:
+        elif row.gold_resolved and claim.label != NOT_ENOUGH_INFO and row.label != FEVER_TO_LABEL[
+            NOT_ENOUGH_INFO
+        ]:
             raise ValueError(f"{split}: claim {row.id} is verifiable but carries no gold")
 
 
