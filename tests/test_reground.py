@@ -201,3 +201,17 @@ def test_the_builder_regrounds_only_the_training_splits():
     source = inspect.getsource(build_verdict_dataset.main)
     assert 'split in ("train", "trainval")' in source
     assert "args.reground" in source
+
+
+def test_the_checker_takes_regrounding_from_the_manifest_not_a_default():
+    """
+    The permission must be per-split and derived from what the build recorded. Hard-coding it True
+    would let a build that relabelled rows *without* recording it pass validation -- and no
+    existing dataset would catch that, because a dataset with no relabels passes either way.
+    """
+    from pathlib import Path
+
+    source = Path("scripts/check_verdict_dataset.py").read_text(encoding="utf-8")
+    assert "regrounded=split in regrounded" in source
+    assert "regrounded=True" not in source
+    assert 'manifest.get("regrounded")' in source

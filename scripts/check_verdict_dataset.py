@@ -68,6 +68,17 @@ def main() -> int:
         "test": {c.id: c for c in test_claims},
     }
 
+    # Which splits the builder relabelled, taken from the manifest rather than from a flag: the
+    # checker cannot then be told to tolerate a relabel the build did not actually record, and an
+    # unrecorded relabel stays a failure.
+    regrounded = manifest.get("regrounded") or {}
+    if regrounded:
+        moved = ", ".join(
+            f"{split} {stats['moved']:,} ({stats['share_of_verifiable']:.1%} of verifiable)"
+            for split, stats in regrounded.items()
+        )
+        print(f"\n=== regrounded: {moved} ===")
+
     print("\n=== splits, as the notebook reads them ===")
     by_split = {}
     claims_by_split = {}
@@ -84,7 +95,7 @@ def main() -> int:
             continue
 
         try:
-            validate(rows, present, split=split)
+            validate(rows, present, split=split, regrounded=split in regrounded)
         except ValueError as error:
             failures.append(str(error))
             continue
