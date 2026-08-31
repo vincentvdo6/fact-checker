@@ -200,7 +200,7 @@ def test_the_builder_regrounds_only_the_training_splits():
 
     source = inspect.getsource(build_verdict_dataset.main)
     assert 'split in ("train", "trainval")' in source
-    assert "args.reground" in source
+    assert 'args.ungrounded != "keep"' in source
 
 
 def test_the_checker_takes_regrounding_from_the_manifest_not_a_default():
@@ -215,3 +215,74 @@ def test_the_checker_takes_regrounding_from_the_manifest_not_a_default():
     assert "regrounded=split in regrounded" in source
     assert "regrounded=True" not in source
     assert 'manifest.get("regrounded")' in source
+
+
+# --- drop mode: the control that separates the two things relabelling does at once -------------
+
+def test_drop_mode_removes_the_row_instead_of_relabelling_it():
+    """
+    "nei" removes contradictory supervision *and* teaches abstention on ungrounded input. "drop"
+    does the first without the second. Without both, a rise in NEI F1 cannot be attributed to
+    either -- which is the confound this mode exists to resolve.
+    """
+    refs = [("A", 0), ("A", 1)]
+    rows = [
+        row(1, SUPPORTED, refs, gold=[("Z", 9)]),      # ungrounded
+        row(2, CONTRADICTED, refs, gold=[("A", 0)]),   # grounded
+        row(3, NEI, refs),
+    ]
+    claims = {
+        1: claim(1, "SUPPORTS", [[("Z", 9)]]),
+        2: claim(2, "REFUTES", [[("A", 0)]]),
+        3: claim(3, NOT_ENOUGH_INFO, []),
+    }
+    budgets = {1: 2, 2: 2, 3: 2}
+
+    dropped, stats = reground(rows, claims, budgets, mode="drop")
+    assert [r.id for r in dropped] == [2, 3]
+    assert stats["moved"] == 1
+    assert (stats["rows_before"], stats["rows_after"]) == (3, 2)
+
+    relabelled, _ = reground(rows, claims, budgets, mode="nei")
+    assert [r.id for r in relabelled] == [1, 2, 3]
+
+
+def test_both_modes_identify_the_same_ungrounded_rows():
+    """They must differ only in what they do about it, never in what they find."""
+    refs = [("A", 0), ("A", 1), ("A", 2)]
+    rows = [row(i, SUPPORTED, refs, gold=[("A", 2)]) for i in range(1, 5)]
+    claims = {i: claim(i, "SUPPORTS", [[("A", 2)]]) for i in range(1, 5)}
+    budgets = {1: 1, 2: 3, 3: 1, 4: 3}          # rows 1 and 3 stop before the gold
+
+    _, drop_stats = reground(rows, claims, budgets, mode="drop")
+    _, nei_stats = reground(rows, claims, budgets, mode="nei")
+    assert drop_stats["moved"] == nei_stats["moved"] == 2
+
+
+def test_drop_mode_needs_no_relabel_exemption_from_validate():
+    """Nothing is relabelled, so the surviving rows still match FEVER exactly."""
+    refs = [("A", 0)]
+    rows = [row(1, SUPPORTED, refs, gold=[("Z", 9)]), row(2, SUPPORTED, refs, gold=[("A", 0)])]
+    claims = {1: claim(1, "SUPPORTS", [[("Z", 9)]]), 2: claim(2, "SUPPORTS", [[("A", 0)]])}
+
+    dropped, _ = reground(rows, claims, {1: 1, 2: 1}, mode="drop")
+    validate(dropped, claims, split="train")     # regrounded=False, and it passes
+
+
+def test_an_unknown_mode_is_refused():
+    rows = [row(1, SUPPORTED, [("A", 0)], gold=[("A", 0)])]
+    claims = {1: claim(1, "SUPPORTS", [[("A", 0)]])}
+    with pytest.raises(ValueError, match="must be 'nei' or 'drop'"):
+        reground(rows, claims, {1: 1}, mode="delete")
+
+
+def test_the_builder_offers_both_modes_and_defaults_to_neither():
+    import inspect
+
+    from scripts import build_verdict_dataset
+
+    source = inspect.getsource(build_verdict_dataset.main)
+    assert '"keep", "nei", "drop"' in source
+    assert 'default="keep"' in source
+    # drop removes rows rather than relabelling, so it must not claim the relabel exemption
+    assert 'regrounded=args.ungrounded == "nei"' in source

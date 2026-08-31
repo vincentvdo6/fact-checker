@@ -216,7 +216,7 @@ def sha256(path: str | Path) -> str:
 
 
 def reground(
-    rows: list[Row], claims: dict[int, Claim], budgets: dict[int, int]
+    rows: list[Row], claims: dict[int, Claim], budgets: dict[int, int], *, mode: str = "nei"
 ) -> tuple[list[Row], dict[str, object]]:
     """
     Relabel a training row by what its evidence actually supports.
@@ -243,8 +243,17 @@ def reground(
 
     Never call this on calibration or test. They keep FEVER's labels, or the evaluation grades
     against our own relabelling and nothing stays comparable to the phases before it.
+
+    `mode` separates two things relabelling does at once, which the headline experiment otherwise
+    confounds. "nei" both removes the contradictory supervision *and* teaches the model to answer
+    NEI on ungrounded input; "drop" removes those rows entirely, doing the first without the
+    second. Run against each other they say which of the two moved the number -- without the
+    comparison, a rise in NEI F1 cannot be attributed to either.
     """
     from src.eval.retrieval import recall_at_k
+
+    if mode not in ("nei", "drop"):
+        raise ValueError(f"mode must be 'nei' or 'drop', got {mode!r}")
 
     before = _prior(rows)
     out: list[Row] = []
@@ -265,6 +274,8 @@ def reground(
             continue
 
         moved += 1
+        if mode == "drop":
+            continue
         out.append(
             Row(
                 id=row.id,
@@ -278,7 +289,10 @@ def reground(
 
     verifiable = sum(1 for row in rows if row.label != FEVER_TO_LABEL[NOT_ENOUGH_INFO])
     return out, {
+        "mode": mode,
         "moved": moved,
+        "rows_before": len(rows),
+        "rows_after": len(out),
         "verifiable_before": verifiable,
         "share_of_verifiable": moved / verifiable if verifiable else 0.0,
         "prior_before": before,

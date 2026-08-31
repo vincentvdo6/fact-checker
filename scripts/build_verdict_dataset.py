@@ -84,8 +84,10 @@ def main() -> int:
     parser.add_argument("--dest", default=str(DEST))
     parser.add_argument("--limit-train", type=int, default=0, help="smaller train split, for a dry run")
     parser.add_argument(
-        "--reground", action="store_true",
-        help="relabel train and trainval rows whose evidence cannot support their label",
+        "--ungrounded", choices=("keep", "nei", "drop"), default="keep",
+        help="what to do with train and trainval rows whose evidence cannot support their label: "
+             "keep them as FEVER labelled them, relabel to NEI, or drop them. nei and drop "
+             "separate teaching abstention from merely removing contradictory supervision",
     )
     parser.add_argument("--base-model", default="microsoft/deberta-v3-base")
     parser.add_argument("--max-length", type=int, default=512)
@@ -128,7 +130,7 @@ def main() -> int:
         # Only the training splits. Relabelling calibration or test would grade the model against
         # our own relabelling and make every number since Phase 02 incomparable while still
         # computing -- so the split list is spelled out here rather than inferred from a flag.
-        if args.reground and split in ("train", "trainval"):
+        if args.ungrounded != "keep" and split in ("train", "trainval"):
             budgets = budgets_for(
                 [row.to_dict() for row in rows],
                 variant="retrieved",
@@ -136,12 +138,20 @@ def main() -> int:
                 seed=args.seed,
                 tokenizer_source=args.base_model,
             )
-            rows, stats = reground(rows, claims, dict(zip([r.id for r in rows], budgets, strict=True)))
+            rows, stats = reground(
+                rows, claims, dict(zip([r.id for r in rows], budgets, strict=True)),
+                mode=args.ungrounded,
+            )
             regrounded[split] = stats
-            print(f"  regrounded {stats['moved']:,} of {stats['verifiable_before']:,} verifiable "
-                  f"({stats['share_of_verifiable']:.1%})", flush=True)
+            verb = "relabelled" if args.ungrounded == "nei" else "dropped"
+            print(f"  {verb} {stats['moved']:,} of {stats['verifiable_before']:,} verifiable "
+                  f"({stats['share_of_verifiable']:.1%}); {stats['rows_after']:,} rows remain",
+                  flush=True)
 
-        validate(rows, claims, split=split, regrounded=split in regrounded)
+        validate(
+            rows, claims, split=split,
+            regrounded=args.ungrounded == "nei" and split in regrounded,
+        )
         by_split[split] = rows
         claims_by_split[split] = claims
 
