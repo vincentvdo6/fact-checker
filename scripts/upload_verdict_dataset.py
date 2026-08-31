@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -23,7 +24,7 @@ from src.verdict.dataset import sha256
 
 DEST = Path("data/kaggle/fever-verdict-v1")
 SLUG = "fever-verdict-v1"
-TITLE = "FEVER verdict training data v1"
+TITLE = "FEVER verdict training data"
 
 
 def kaggle(*args: str) -> subprocess.CompletedProcess:
@@ -66,8 +67,15 @@ def main() -> int:
     manifest = verify(dest)
     ref = f"{owner()}/{args.slug}"
 
+    # The version belongs in the title as well as the slug. Hard-coding it meant every later
+    # dataset went out titled v1, which is exactly the ambiguity the versioned slug exists to
+    # prevent -- two datasets with the same name and different contents.
+    # A full match on v<digits>, not a "starts with v": the bare slug "fever-verdict" ends in
+    # "verdict", which does start with a v, and would have produced "... training data verdict".
+    version = args.slug.rsplit("-", 1)[-1]
+    title = f"{TITLE} {version}" if re.fullmatch(r"v\d+", version) else TITLE
     (dest / "dataset-metadata.json").write_text(
-        json.dumps({"title": TITLE, "id": ref, "licenses": [{"name": "CC0-1.0"}]}, indent=2),
+        json.dumps({"title": title, "id": ref, "licenses": [{"name": "CC0-1.0"}]}, indent=2),
         encoding="utf-8",
     )
 
