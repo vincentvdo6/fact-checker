@@ -231,12 +231,18 @@ def test_averitec_splits_are_stratified_by_verdict():
     MIXED is under 6% of AVeriTeC. An unstratified cut can leave calibration with a handful of
     them, and a per-class bias fitted on a handful is noise wearing a number.
     """
-    claims = averitec_claims({"supported": 400, "contradicted": 800, "mixed": 90, "not_enough_evidence": 130})
-    _, calibration, test = split_averitec(claims)
+    per_label = {"supported": 400, "contradicted": 800, "mixed": 90, "not_enough_evidence": 130}
+    claims = averitec_claims(per_label)
+    _, calibration, test = split_averitec(claims, calibration_fraction=0.14, test_fraction=0.14)
 
-    for part in (calibration, test):
-        share = sum(1 for c in part if c.label == "mixed") / len(part)
-        assert 0.03 < share < 0.09, f"mixed is {share:.3f} of a split; stratification failed"
+    # Exact counts, not a tolerance band. A tolerance wide enough to be safe is also wide enough
+    # for an unstratified split to pass, because random assignment lands each label near its
+    # population share anyway -- which is how a vacuous version of this test survived until
+    # mutation testing removed the stratification and nothing failed.
+    for label, total in per_label.items():
+        expected = round(total * 0.14)
+        assert sum(1 for c in calibration if c.label == label) == expected, label
+        assert sum(1 for c in test if c.label == label) == expected, label
 
 
 def test_averitec_assignment_is_stable_under_reordering():
