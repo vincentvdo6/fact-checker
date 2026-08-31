@@ -195,3 +195,82 @@ def sha256(path: str | Path) -> str:
         while chunk := handle.read(1 << 20):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def reground(
+    rows: list[Row], claims: dict[int, Claim], budgets: dict[int, int]
+) -> tuple[list[Row], dict[str, object]]:
+    """
+    Relabel a training row by what its evidence actually supports.
+
+    A verifiable claim whose gold retrieval never reached carries a SUPPORTED or CONTRADICTED
+    label with nothing in the input that justifies it. Phase 02 measured what that costs: the rule
+    "no supporting evidence -> NEI" is contradicted on roughly a third of verifiable rows, so the
+    model cannot learn it and hedges toward supported instead -- 47.5% NEI recall against the gold
+    oracle's 86.0%, on inputs that were byte-identical. Every fix since has been at inference. This
+    is the same defect fixed at the source: if the evidence does not support a verdict, the label
+    says so.
+
+    Groundedness is decided over the **read prefix**, not the stored 25. `budgets` is what the
+    encoder will actually pack, so a claim whose gold sits at rank 20 behind a budget of 12 is
+    ungrounded no matter what was stored beside it.
+
+    Judged against every gold group, not the one `Row.gold` kept. `smallest_gold` keeps the
+    cheapest group to reserve; a larger group can be fully present when the smallest is not, and
+    scoring on the stored one alone would relabel rows whose evidence was there all along.
+
+    A relabelled row loses its gold, because NEI rows carry none by construction and `validate`
+    enforces it. That also means a regrounded dataset cannot train the gold oracle -- which is
+    correct: the oracle assumes perfect retrieval, and this asks what happens without it.
+
+    Never call this on calibration or test. They keep FEVER's labels, or the evaluation grades
+    against our own relabelling and nothing stays comparable to the phases before it.
+    """
+    from src.eval.retrieval import recall_at_k
+
+    before = _prior(rows)
+    out: list[Row] = []
+    moved = 0
+    for row in rows:
+        claim = claims.get(row.id)
+        if claim is None:
+            raise ValueError(f"claim {row.id} is missing from the claim map")
+        budget = budgets.get(row.id)
+        if budget is None:
+            raise ValueError(f"claim {row.id} has no packing budget")
+
+        grounded = claim.label == NOT_ENOUGH_INFO or recall_at_k(
+            [(title, index) for title, index, _ in row.evidence], claim.groups, budget
+        )
+        if grounded:
+            out.append(row)
+            continue
+
+        moved += 1
+        out.append(
+            Row(
+                id=row.id,
+                label=FEVER_TO_LABEL[NOT_ENOUGH_INFO],
+                claim=row.claim,
+                evidence=row.evidence,
+                gold=(),
+                gold_resolved=True,
+            )
+        )
+
+    verifiable = sum(1 for row in rows if row.label != FEVER_TO_LABEL[NOT_ENOUGH_INFO])
+    return out, {
+        "moved": moved,
+        "verifiable_before": verifiable,
+        "share_of_verifiable": moved / verifiable if verifiable else 0.0,
+        "prior_before": before,
+        "prior_after": _prior(out),
+    }
+
+
+def _prior(rows: list[Row]) -> dict[str, float]:
+    counts: dict[str, int] = {}
+    for row in rows:
+        counts[row.label] = counts.get(row.label, 0) + 1
+    total = len(rows) or 1
+    return {label: count / total for label, count in sorted(counts.items())}
