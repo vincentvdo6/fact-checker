@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts.make_notebooks import VARIANTS, cells, notebook, undecorate
+from scripts.make_notebooks import DATASETS, VARIANTS, cells, kernel_metadata, notebook, undecorate
 
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE = ROOT / "notebooks" / "verdict_notebook.py"
@@ -114,3 +114,46 @@ def test_rehearsal_mode_turns_smoke_on():
     source = TEMPLATE.read_text(encoding="utf-8")
     cfg = json.dumps(notebook(source, "retrieved", smoke=True))
     assert "smoke=True" in cfg and "smoke=False" not in cfg
+
+
+def test_every_kernel_points_at_a_notebook_that_exists():
+    """A wrong code_file fails at push time, after the dataset has already been uploaded."""
+    for name in DATASETS:
+        code_file = kernel_metadata(name, "owner")["code_file"]
+        assert (ROOT / "notebooks" / code_file).exists(), f"{name} -> {code_file}"
+
+
+def test_the_regrounded_kernel_trains_on_v2_and_the_rest_on_v1():
+    """
+    The whole point of Phase 05 is a comparison, and it evaporates if the new kernel is pointed at
+    the old data -- the run would succeed and produce a second copy of the control.
+    """
+    assert kernel_metadata("retrieved_grounded", "o")["dataset_sources"] == ["o/fever-verdict-v2"]
+    for name in ("retrieved", "claim_only", "gold"):
+        assert kernel_metadata(name, "o")["dataset_sources"] == ["o/fever-verdict-v1"], name
+
+
+def test_the_regrounded_kernel_reuses_the_retrieved_notebook():
+    """Same encoder, same config, different data. A fourth copy would only invite drift."""
+    assert kernel_metadata("retrieved_grounded", "o")["code_file"] == "kaggle_verdict_retrieved.ipynb"
+    assert kernel_metadata("retrieved", "o")["code_file"] == "kaggle_verdict_retrieved.ipynb"
+
+
+def test_kernel_ids_are_distinct():
+    """Two kernels sharing an id means the second push overwrites the first one's run."""
+    ids = [kernel_metadata(name, "owner")["id"] for name in DATASETS]
+    assert len(set(ids)) == len(ids)
+
+
+def test_kernels_stay_private():
+    for name in DATASETS:
+        assert kernel_metadata(name, "owner")["is_private"] is True, name
+
+
+def test_the_committed_kernel_definitions_match_the_generator():
+    """Hand-editing one would make the committed run and the generated one disagree silently."""
+    for name in DATASETS:
+        path = ROOT / "notebooks" / "kernels" / f"{name}.json"
+        assert path.exists(), f"{path} is missing; run python -m scripts.make_notebooks"
+        stored = json.loads(path.read_text(encoding="utf-8"))
+        assert stored == kernel_metadata(name, stored["id"].split("/")[0]), name

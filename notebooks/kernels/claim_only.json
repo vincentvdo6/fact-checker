@@ -1,0 +1,15 @@
+{
+  "id": "vincentvdo6/fever-verdict-claim-only",
+  "title": "fever verdict claim only",
+  "code_file": "kaggle_verdict_claim_only.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": true,
+  "dataset_sources": [
+    "vincentvdo6/fever-verdict-v1"
+  ],
+  "competition_sources": [],
+  "kernel_sources": []
+}

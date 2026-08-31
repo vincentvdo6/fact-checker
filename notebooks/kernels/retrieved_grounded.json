@@ -1,0 +1,15 @@
+{
+  "id": "vincentvdo6/fever-verdict-retrieved-grounded",
+  "title": "fever verdict retrieved grounded",
+  "code_file": "kaggle_verdict_retrieved.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": true,
+  "dataset_sources": [
+    "vincentvdo6/fever-verdict-v2"
+  ],
+  "competition_sources": [],
+  "kernel_sources": []
+}

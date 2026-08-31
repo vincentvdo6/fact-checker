@@ -38,6 +38,47 @@ HEADINGS = {
     "gold": "gold evidence (reasoning ceiling)",
 }
 
+# Which dataset each kernel trains on. Phase 05 runs the same `retrieved` encoder against
+# regrounded labels, so it is a separate kernel against a separate dataset: pushing over the
+# Phase 02 kernel would replace the control the new model is measured against.
+DATASETS = {
+    "retrieved": "fever-verdict-v1",
+    "claim_only": "fever-verdict-v1",
+    "gold": "fever-verdict-v1",
+    "retrieved_grounded": "fever-verdict-v2",
+}
+
+# Kernels that reuse another variant's notebook unchanged. retrieved_grounded differs only in the
+# data it is pointed at, so generating a fourth identical notebook would invite the two to drift.
+NOTEBOOK_FOR = {"retrieved_grounded": "retrieved"}
+
+
+def kernel_metadata(name: str, owner: str) -> dict:
+    """
+    The Kaggle kernel definition, generated rather than hand-kept.
+
+    These lived only in a scratch directory through Phases 02 to 04, which meant the runs that
+    produced every trained artifact could not be reproduced from the repository. Generating them
+    puts the attached dataset, the notebook and the privacy flag under version control together.
+
+    `enable_gpu` does not choose the accelerator. That happens at push time with
+    `--accelerator NvidiaTeslaT4`, capital N, and the CLI validates nothing -- it accepts a
+    misspelling and falls back to the P100, which cannot run Kaggle's installed torch at all.
+    """
+    return {
+        "id": f"{owner}/fever-verdict-{name.replace('_', '-')}",
+        "title": f"fever verdict {name.replace('_', ' ')}",
+        "code_file": f"kaggle_verdict_{NOTEBOOK_FOR.get(name, name)}.ipynb",
+        "language": "python",
+        "kernel_type": "notebook",
+        "is_private": True,
+        "enable_gpu": True,
+        "enable_internet": True,
+        "dataset_sources": [f"{owner}/{DATASETS[name]}"],
+        "competition_sources": [],
+        "kernel_sources": [],
+    }
+
 
 def cells(source: str) -> list[tuple[str, str]]:
     """Split the template into (kind, body) on its cell markers."""
@@ -97,6 +138,7 @@ def main() -> int:
     parser.add_argument("--check", action="store_true", help="fail if the notebooks are stale")
     parser.add_argument("--smoke", action="store_true", help="rehearsal notebooks; requires --out")
     parser.add_argument("--out", default=str(OUT), help="destination directory (default notebooks/)")
+    parser.add_argument("--owner", default="vincentvdo6", help="Kaggle account owning the kernels")
     args = parser.parse_args()
     if args.smoke and Path(args.out) == OUT:
         raise SystemExit("--smoke writes rehearsal notebooks; point --out at a scratch directory")
@@ -116,6 +158,16 @@ def main() -> int:
         # would dirty all three files with line-ending churn on every regeneration.
         path.write_text(rendered, encoding="utf-8", newline="\n")
         print(f"  wrote {path.name}  ({len(rendered) / 1024:.0f} KB)")
+
+    # Rehearsal notebooks are scratch, so they get no kernel definitions: pushing one would run a
+    # 2,048-row smoke against a kernel slug the real run also uses.
+    if not args.check and not args.smoke:
+        kernels = out / "kernels"
+        kernels.mkdir(parents=True, exist_ok=True)
+        for name in DATASETS:
+            rendered = json.dumps(kernel_metadata(name, args.owner), indent=2) + "\n"
+            (kernels / f"{name}.json").write_text(rendered, encoding="utf-8", newline="\n")
+        print(f"  wrote {len(DATASETS)} kernel definitions to {kernels}")
 
     if args.check:
         if stale:
