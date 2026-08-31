@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -143,6 +144,10 @@ def test_trainval_is_a_declared_split_choice():
 
 
 @pytest.mark.slow
+@pytest.mark.skipif(
+    not (Path("data/fever/train.jsonl").exists() and Path("data/fever/shared_task_dev.jsonl").exists()),
+    reason="FEVER data absent; run python -m scripts.fetch_fever",
+)
 def test_trainval_loads_the_model_selection_holdout():
     """
     Phase 04 fits its sufficiency head here. The calibration split already carries the calibrator
