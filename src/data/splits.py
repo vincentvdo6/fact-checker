@@ -107,3 +107,55 @@ def holdout(
     held = [claim for claim in claims if claim.key in chosen]
     remaining = [claim for claim in claims if claim.key not in chosen]
     return remaining, held
+
+
+AVERITEC_SALT = "averitec-splits-v1"
+
+
+def split_averitec(
+    claims: list,
+    *,
+    salt: str = AVERITEC_SALT,
+    calibration_fraction: float = 0.14,
+    test_fraction: float = 0.14,
+) -> tuple[list, list, list]:
+    """
+    Three-way split of AVeriTeC, by claim key and stratified by verdict.
+
+    Returns (train, calibration, test).
+
+    AVeriTeC gives no usable split of its own. Its released test file ships unlabelled for the
+    shared-task leaderboard, and its dev is 500 claims -- too few to cut in half and still measure
+    a four-class ECE. So train and dev are pooled and cut here, which is a departure from FEVER,
+    where the released dev *was* the balanced evaluation set and splitting it was the right move.
+
+    Stratified because the label distribution is severely skewed: Refuted is 57% and MIXED under
+    6%, so an unstratified cut can leave a handful of MIXED claims in calibration and make its
+    per-class numbers noise. The fractions default to roughly 500 claims each, matching what
+    FEVER's halves gave and keeping the calibration split large enough to fit a per-class bias on.
+
+    Hash of the claim key, like `split_dev`: stable under reordering, reproducible without a
+    stored index, and every copy of a repeated claim lands on the same side.
+    """
+    if not 0.0 < calibration_fraction + test_fraction < 1.0:
+        raise ValueError("calibration and test fractions must leave some train behind")
+
+    keys_by_label: dict[str, set[str]] = defaultdict(set)
+    for claim in claims:
+        keys_by_label[claim.label].add(claim.key)
+
+    calibration_keys: set[str] = set()
+    test_keys: set[str] = set()
+    assigned: set[str] = set()
+    for label in sorted(keys_by_label):
+        candidates = sorted(keys_by_label[label] - assigned, key=lambda k: _rank(k, salt))
+        cut = round(len(candidates) * calibration_fraction)
+        second = cut + round(len(candidates) * test_fraction)
+        calibration_keys.update(candidates[:cut])
+        test_keys.update(candidates[cut:second])
+        assigned.update(candidates)
+
+    calibration = [c for c in claims if c.key in calibration_keys]
+    test = [c for c in claims if c.key in test_keys]
+    train = [c for c in claims if c.key not in calibration_keys and c.key not in test_keys]
+    return train, calibration, test

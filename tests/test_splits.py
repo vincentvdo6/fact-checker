@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from src.data.fever import LABELS, Claim, claim_key, load_claims
-from src.data.splits import HOLDOUT_PER_LABEL, drop_leaked, holdout, split_dev
+from src.data.splits import HOLDOUT_PER_LABEL, drop_leaked, holdout, split_averitec, split_dev
 
 DEV = "data/fever/shared_task_dev.jsonl"
 TRAIN = "data/fever/train.jsonl"
@@ -195,3 +195,70 @@ def test_real_holdout_leaves_train_usable():
     assert 3 * HOLDOUT_PER_LABEL <= len(held) < 3 * HOLDOUT_PER_LABEL * 1.2
     for label in LABELS:
         assert sum(1 for c in held if c.label == label) >= HOLDOUT_PER_LABEL
+
+
+# --- AVeriTeC: three ways, from a pool rather than a released dev ------------------------------
+
+class FakeAveritec:
+    """Minimal stand-in: split_averitec only reads .label and .key."""
+
+    def __init__(self, key: str, label: str) -> None:
+        self.key = key
+        self.label = label
+
+
+def averitec_claims(per_label: dict[str, int]) -> list[FakeAveritec]:
+    return [
+        FakeAveritec(f"{label}-{i}", label)
+        for label, count in per_label.items()
+        for i in range(count)
+    ]
+
+
+def test_averitec_splits_are_disjoint_and_exhaustive():
+    claims = averitec_claims({"supported": 400, "contradicted": 800, "mixed": 90, "not_enough_evidence": 130})
+    train, calibration, test = split_averitec(claims)
+
+    assert len(train) + len(calibration) + len(test) == len(claims)
+    keys = [{c.key for c in part} for part in (train, calibration, test)]
+    assert not keys[0] & keys[1]
+    assert not keys[0] & keys[2]
+    assert not keys[1] & keys[2]
+
+
+def test_averitec_splits_are_stratified_by_verdict():
+    """
+    MIXED is under 6% of AVeriTeC. An unstratified cut can leave calibration with a handful of
+    them, and a per-class bias fitted on a handful is noise wearing a number.
+    """
+    claims = averitec_claims({"supported": 400, "contradicted": 800, "mixed": 90, "not_enough_evidence": 130})
+    _, calibration, test = split_averitec(claims)
+
+    for part in (calibration, test):
+        share = sum(1 for c in part if c.label == "mixed") / len(part)
+        assert 0.03 < share < 0.09, f"mixed is {share:.3f} of a split; stratification failed"
+
+
+def test_averitec_assignment_is_stable_under_reordering():
+    """Hash of the key, not a shuffle: reproducible with no stored index."""
+    claims = averitec_claims({"supported": 200, "contradicted": 300, "mixed": 60, "not_enough_evidence": 80})
+    first = split_averitec(claims)
+    second = split_averitec(list(reversed(claims)))
+    for a, b in zip(first, second, strict=True):
+        assert {c.key for c in a} == {c.key for c in b}
+
+
+def test_a_repeated_claim_lands_on_one_side():
+    """Two rows sharing a key must not straddle the boundary, or evaluation sees training text."""
+    claims = averitec_claims({"supported": 100, "contradicted": 200, "mixed": 40, "not_enough_evidence": 60})
+    claims += [FakeAveritec("supported-0", "supported"), FakeAveritec("contradicted-0", "contradicted")]
+    parts = split_averitec(claims)
+    for key in ("supported-0", "contradicted-0"):
+        holders = [i for i, part in enumerate(parts) if any(c.key == key for c in part)]
+        assert len(holders) == 1, f"{key} appears in {len(holders)} splits"
+
+
+def test_averitec_fractions_that_leave_no_train_are_refused():
+    claims = averitec_claims({"supported": 50, "contradicted": 50, "mixed": 20, "not_enough_evidence": 20})
+    with pytest.raises(ValueError, match="leave some train"):
+        split_averitec(claims, calibration_fraction=0.6, test_fraction=0.5)
