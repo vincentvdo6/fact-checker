@@ -48,6 +48,10 @@ DATASETS = {
     "retrieved_grounded": "fever-verdict-v2",
     "retrieved_dropped": "fever-verdict-v3",
     "claim_only_grounded": "fever-verdict-v2",
+    "claim_only_averitec": "averitec-verdict-v1",
+    "claim_only_small": "fever-verdict-small-v1",
+    "gold_averitec": "averitec-verdict-v1",
+    "gold_small": "fever-verdict-small-v1",
 }
 
 # Kernels that reuse another variant's notebook unchanged. retrieved_grounded differs only in the
@@ -56,6 +60,10 @@ NOTEBOOK_FOR = {
     "retrieved_grounded": "retrieved",
     "retrieved_dropped": "retrieved",
     "claim_only_grounded": "claim_only",
+    "claim_only_averitec": "claim_only",
+    "claim_only_small": "claim_only",
+    "gold_averitec": "gold",
+    "gold_small": "gold",
 }
 
 
