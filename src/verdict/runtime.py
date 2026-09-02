@@ -22,6 +22,7 @@ sidebar that promises "strong: right about nine times in ten" becomes false. Tha
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -33,6 +34,13 @@ from src.verdict.encode import build_input
 
 MODELS = Path("models/verdict")
 ONNX_FILE = "onnx/verdict.onnx"
+
+# Bounded on purpose. Left at 0, onnxruntime takes every physical core, and a 184M-parameter
+# DeBERTa then runs sustained all-core AVX matmuls -- which hard-reset this machine twice while
+# scoring the 2,000-claim parity split, with no bugcheck logged either time. Four threads is
+# still several times faster than one and leaves the box usable; raise it with VERDICT_THREADS
+# on hardware that can carry it.
+DEFAULT_THREADS = 4
 
 Evidence = Sequence[Sequence]
 
@@ -53,8 +61,17 @@ class VerdictRuntime:
     not pay for it.
     """
 
-    def __init__(self, variant: str = "retrieved", *, models: str | Path = MODELS) -> None:
+    def __init__(
+        self,
+        variant: str = "retrieved",
+        *,
+        models: str | Path = MODELS,
+        threads: int | None = None,
+    ) -> None:
         self.root = Path(models) / variant
+        self.threads = threads if threads is not None else int(
+            os.environ.get("VERDICT_THREADS", DEFAULT_THREADS)
+        )
         self.contract = EncoderContract.from_dict(
             json.loads((self.root / CONTRACT_FILE).read_text(encoding="utf-8"))
         )
@@ -72,10 +89,9 @@ class VerdictRuntime:
                     f"{path} is missing. Export it on Kaggle with notebooks/export_onnx.py, "
                     "then place verdict.onnx here."
                 )
-            # Single-threaded is deliberate: a transcript is scored claim by claim, and letting
-            # onnxruntime spawn a pool per call costs more than it saves at batch size one.
             options = ort.SessionOptions()
-            options.intra_op_num_threads = 0        # 0 lets ORT pick from the machine
+            options.intra_op_num_threads = self.threads
+            options.inter_op_num_threads = 1       # one graph at a time; nothing here runs in parallel
             self._session = ort.InferenceSession(
                 str(path), options, providers=["CPUExecutionProvider"]
             )

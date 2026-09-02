@@ -63,3 +63,4 @@ nul
 # Logs / temp
 *.log
 *.tmp
+.firecrawl/

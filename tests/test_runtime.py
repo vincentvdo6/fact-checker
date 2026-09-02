@@ -18,7 +18,7 @@ import numpy as np
 import pytest
 
 from src.verdict.encode import build_input
-from src.verdict.runtime import MODELS, ONNX_FILE, Scored, VerdictRuntime
+from src.verdict.runtime import DEFAULT_THREADS, MODELS, ONNX_FILE, Scored, VerdictRuntime
 
 RUNTIME = Path("src/verdict/runtime.py")
 
@@ -79,6 +79,55 @@ def test_the_contract_travels_with_the_runtime(tmp_path):
     source = RUNTIME.read_text(encoding="utf-8")
     assert "self.contract.max_length" in source
     assert "max_length=512" not in source
+
+
+# --- the thread pool is bounded, and that is load-bearing -------------------------------------
+
+def contract_at(root):
+    """A minimal on-disk contract, so a runtime can be constructed without the 738 MB graph."""
+    (root / "retrieved").mkdir(parents=True, exist_ok=True)
+    (root / "retrieved" / "contract.json").write_text(
+        json.dumps({
+            "base_model": "microsoft/deberta-v3-base", "base_revision": "x",
+            "tokenizer_sha256": "0" * 64,
+            "labels": ["supported", "contradicted", "not_enough_evidence"],
+            "max_length": 512, "template_id": "per_page_grouped_v1", "variant": "retrieved",
+            "seed": 42, "torch_version": "2.10.0", "transformers_version": "5.0.0",
+            "contract_version": 1,
+        }), encoding="utf-8",
+    )
+    return root
+
+
+def test_the_thread_pool_is_bounded_well_below_a_modern_core_count(tmp_path):
+    """
+    Left unbounded, onnxruntime takes every physical core and a 184M-parameter DeBERTa runs
+    sustained all-core AVX matmuls. That hard-reset this machine twice while scoring the parity
+    split -- no bugcheck logged either time, so a power or thermal cutout rather than a driver
+    fault. The bound is not a nicety; it is why the check can finish.
+    """
+    assert 1 <= DEFAULT_THREADS <= 8
+    assert VerdictRuntime("retrieved", models=contract_at(tmp_path)).threads == DEFAULT_THREADS
+
+
+def test_the_thread_count_can_be_raised_for_hardware_that_carries_it(tmp_path, monkeypatch):
+    monkeypatch.setenv("VERDICT_THREADS", "12")
+    assert VerdictRuntime("retrieved", models=contract_at(tmp_path)).threads == 12
+
+
+def test_an_explicit_thread_count_beats_the_environment(tmp_path, monkeypatch):
+    monkeypatch.setenv("VERDICT_THREADS", "12")
+    assert VerdictRuntime("retrieved", models=contract_at(tmp_path), threads=2).threads == 2
+
+
+def test_the_session_is_built_with_that_bound_rather_than_ignoring_it():
+    """
+    Storing the number and then handing onnxruntime a zero would read as bounded and behave as
+    unbounded -- the exact failure that took the machine down, back again and silent.
+    """
+    source = RUNTIME.read_text(encoding="utf-8")
+    assert "options.intra_op_num_threads = self.threads" in source
+    assert "intra_op_num_threads = 0" not in source
 
 
 # --- against the real graph ---------------------------------------------------------------------
