@@ -28,6 +28,7 @@ from __future__ import annotations
 import argparse
 import gzip
 import json
+import os
 import random
 import sys
 from pathlib import Path
@@ -44,12 +45,39 @@ MODELS = Path("models/verdict")
 
 LOGIT_TOLERANCE = 1e-3
 
+# Scored logits are appended here as they are produced, and fsynced per batch. Scoring 2,000
+# claims takes long enough that this machine went down under the load twice before finishing,
+# and losing an hour to a power cut is not a reason to weaken the check -- so a crash costs one
+# batch. Delete the file to force a clean re-score.
+CACHE = "onnx_logits_{split}.jsonl"
+
 
 def read_rows(split: str) -> list[dict]:
     path = DATA / f"verdict_{split}.jsonl.gz"
     opener, target = (gzip.open, path) if path.exists() else (open, DATA / f"verdict_{split}.jsonl")
     with opener(target, "rt", encoding="utf-8") as handle:
         return [json.loads(line) for line in handle]
+
+
+def read_cache(path: Path) -> dict[str, list[float]]:
+    """
+    Logits already scored, by claim id.
+
+    A truncated final line is expected rather than exceptional: the failure this cache exists to
+    survive is a hard reset, which can land mid-write. That line is dropped and the claim is
+    re-scored, which costs one forward pass; parsing it as valid JSON is what would be dangerous.
+    """
+    if not path.exists():
+        return {}
+    done: dict[str, list[float]] = {}
+    with open(path, encoding="utf-8") as handle:
+        for line in handle:
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            done[row["id"]] = row["logits"]
+    return done
 
 
 def main() -> int:
@@ -88,14 +116,30 @@ def main() -> int:
         ids.append(row["id"])
         budgets.append(len(evidence))
 
-    print(f"scoring {len(pairs):,} {args.split} claims through onnxruntime ...", flush=True)
-    scored = []
-    for start in range(0, len(pairs), args.batch):
-        scored.extend(runtime.score_batch(pairs[start:start + args.batch]))
-        if (start // args.batch) % 20 == 0 and start:
-            print(f"  {start:,}/{len(pairs):,}", flush=True)
+    cache_path = root / CACHE.format(split=args.split)
+    done = read_cache(cache_path)
+    if done:
+        print(f"resuming: {len(done):,} of {len(pairs):,} claims already scored", flush=True)
 
-    local = np.asarray([s.logits for s in scored], dtype=np.float64)
+    print(f"scoring {len(pairs):,} {args.split} claims through onnxruntime "
+          f"on {runtime.threads} threads ...", flush=True)
+    with open(cache_path, "a", encoding="utf-8") as cache:
+        for start in range(0, len(pairs), args.batch):
+            chunk = ids[start:start + args.batch]
+            if all(i in done for i in chunk):
+                continue
+            for claim_id, s in zip(chunk, runtime.score_batch(pairs[start:start + args.batch]),
+                                   strict=True):
+                done[claim_id] = [float(x) for x in s.logits]
+                cache.write(json.dumps({"id": claim_id, "logits": done[claim_id]}) + "\n")
+            # Flushed and fsynced per batch: the failure this survives is a hard reset, which
+            # takes the OS page cache with it.
+            cache.flush()
+            os.fsync(cache.fileno())
+            if (start // args.batch) % 20 == 0 and start:
+                print(f"  {start:,}/{len(pairs):,}", flush=True)
+
+    local = np.asarray([done[i] for i in ids], dtype=np.float64)
     kaggle = np.asarray([exported[i]["logits"] for i in ids], dtype=np.float64)
 
     difference = float(np.abs(local - kaggle).max())
