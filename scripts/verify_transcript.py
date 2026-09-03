@@ -30,11 +30,29 @@ import sys
 import time
 from pathlib import Path
 
+from src.pipeline.detector import DetectorFilter
 from src.pipeline.segment import check_worthy, segment
 from src.pipeline.verify import Verifier
 
 TRANSCRIPTS = Path("data/transcripts")
 RUNS = Path("runs/demo")
+
+
+def select(sentences, args) -> list:
+    """
+    Which filter decides what reaches the model.
+
+    The default is the learned detector, because it was measured: F1 0.7619 against the rules'
+    0.3103 on 120 hand labels neither system was fitted to. The rules stay reachable, and not out
+    of sentiment -- they are the only filter whose rejections name a clause a reader can argue
+    with, which makes them the better instrument when the question is *why* something was skipped.
+    """
+    if args.filter == "rules":
+        return [check_worthy(s.text) for s in sentences]
+    chosen = DetectorFilter(args.binarization)
+    print(f"filter: learned detector, {args.binarization} >= {chosen.threshold} "
+          f"(threshold frozen on ClaimBuster's calibration debates)", flush=True)
+    return chosen.decide_batch([s.text for s in sentences])
 
 
 def to_row(sentence, decision, judgement) -> dict:
@@ -51,6 +69,10 @@ def to_row(sentence, decision, judgement) -> dict:
         "start": sentence.start, "end": sentence.end,
         "check_worthy": decision.worthy, "filter_reason": decision.reason,
     }
+    # The detector reports a score where the rules report a clause. Carrying it lets the page say
+    # which filter ran and how sure it was, rather than implying a rule fired.
+    if hasattr(decision, "score"):
+        row["filter_score"] = float(decision.score)
     if judgement is not None:
         row |= {
             "outcome": str(judgement.outcome),
@@ -84,12 +106,17 @@ def main() -> int:
     parser.add_argument("--transcript", default="sotu-2016")
     parser.add_argument("--variant", default="retrieved")
     parser.add_argument("--limit", type=int, default=0, help="verify at most N claims")
+    parser.add_argument("--filter", default="detector", choices=("detector", "rules"),
+                        help="which check-worthiness filter selects the claims")
+    parser.add_argument("--binarization", default="factual",
+                        choices=("factual", "check_worthy"),
+                        help="detector only: which definition of check-worthy to gate on")
     parser.add_argument("--out", default=str(RUNS))
     args = parser.parse_args()
 
     text = (TRANSCRIPTS / f"{args.transcript}.txt").read_text(encoding="utf-8")
     sentences = segment(text)
-    decisions = [(s, check_worthy(s.text)) for s in sentences]
+    decisions = list(zip(sentences, select(sentences, args), strict=True))
     all_worthy = [s for s, d in decisions if d.worthy]
     # --limit truncates what gets verified, never what gets counted: reporting the truncated
     # number as the check-worthy total would understate how much the filter admitted.
@@ -116,6 +143,8 @@ def main() -> int:
     payload = {
         "transcript": args.transcript,
         "variant": args.variant,
+        "filter": args.filter,
+        "binarization": args.binarization if args.filter == "detector" else None,
         "source": "https://www.govinfo.gov/content/pkg/DCPD-201600012/html/DCPD-201600012.htm",
         "sentences": len(sentences),
         "check_worthy": len(all_worthy),

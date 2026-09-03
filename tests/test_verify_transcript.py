@@ -13,6 +13,8 @@ verdict" to a hurried reader, so the data keeps them in different fields.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from scripts.verify_transcript import coverage_of, to_row
@@ -141,3 +143,39 @@ def test_an_unverified_row_is_not_counted_as_either():
     _, declined, coverage = coverage_of([{"outcome": "answered"}, {"outcome": "not_verified"}])
     assert declined == []
     assert coverage == pytest.approx(1.0)
+
+
+# --- which filter selects the claims --------------------------------------------------------
+
+def test_the_learned_detector_is_the_default_and_the_rules_stay_reachable():
+    """
+    The default is the measured winner -- F1 0.7619 against 0.3103 on labels neither system saw.
+    The rules stay available because they are the only filter whose rejections name a clause a
+    reader can argue with, which is the better instrument when the question is why.
+    """
+    source = Path("scripts/verify_transcript.py").read_text(encoding="utf-8")
+    assert 'default="detector", choices=("detector", "rules")' in source
+    assert 'if args.filter == "rules":' in source
+
+
+def test_the_run_records_which_filter_produced_its_claims():
+    """
+    Two filters admit different sentences, so a verdicts.json without this is not interpretable:
+    the same transcript yields different pages and nothing says why.
+    """
+    source = Path("scripts/verify_transcript.py").read_text(encoding="utf-8")
+    assert '"filter": args.filter,' in source
+    assert '"binarization": args.binarization if args.filter == "detector" else None,' in source
+
+
+def test_a_learned_decision_carries_its_score_and_a_rule_decision_does_not():
+    """
+    The score is the honest asymmetry. A rule rejection means a named clause fired; a detector
+    rejection means a number fell below a cut, and the page should be able to tell them apart.
+    """
+    from src.pipeline.detector import Decision as LearnedDecision
+
+    learned = to_row(sentence(), LearnedDecision(False, "below_factual_threshold", 0.12), None)
+    ruled = to_row(sentence(), Decision(False, "no_anchor"), None)
+    assert learned["filter_score"] == pytest.approx(0.12)
+    assert "filter_score" not in ruled

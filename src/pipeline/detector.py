@@ -30,7 +30,10 @@ from pathlib import Path
 
 import numpy as np
 
+from src.calibration.scaling import from_dict as calibrator_from_dict
+
 MODEL = Path("models/checkworthy/v1")
+CALIBRATION_FILE = "calibration.json"
 ONNX_FILE = "onnx/model.onnx"
 DEFAULT_THREADS = 4
 
@@ -55,6 +58,7 @@ class Scored:
 
     probabilities: np.ndarray
     label: str
+    logits: np.ndarray | None = None
 
     @property
     def factual(self) -> float:
@@ -128,6 +132,83 @@ class CheckworthyDetector:
             },
         )[0].astype(np.float64)
         return [
-            Scored(probabilities=row, label=self.labels[int(row.argmax())])
-            for row in softmax(logits)
+            Scored(probabilities=row, label=self.labels[int(row.argmax())], logits=raw)
+            for row, raw in zip(softmax(logits), logits, strict=True)
         ]
+
+
+@dataclass(frozen=True, slots=True)
+class Decision:
+    """
+    Mirrors `src.pipeline.segment.Decision` so either filter can drive the pipeline.
+
+    `reason` is where the two differ honestly. The rules name the clause that fired -- `no_anchor`,
+    `imperative` -- and a reader can check that judgement. The detector has no such story: it has a
+    number, so it reports the number. Inventing a rule-shaped reason for a learned score would be
+    the worse kind of legibility, the kind that looks explanatory and explains nothing.
+    """
+
+    worthy: bool
+    reason: str
+    score: float = 0.0
+
+    def __bool__(self) -> bool:
+        return self.worthy
+
+
+class DetectorFilter:
+    """
+    The learned detector as a drop-in for the hand-written filter.
+
+    The threshold is read from the frozen calibration artifact, never chosen here. It was swept on
+    ClaimBuster's held-out debates precisely so that the 120 SOTU labels stay unspent, and a
+    default that quietly differed from the artifact would undo that.
+
+    `binarization` picks which question is being asked. `factual` matches the Phase 07 rubric --
+    assertable and lookupable -- and is the like-for-like setting; `check_worthy` is ClaimBuster's
+    stricter notion of worth a fact-checker's time.
+    """
+
+    def __init__(
+        self,
+        binarization: str = "factual",
+        *,
+        root: str | Path = MODEL,
+        threads: int | None = None,
+    ) -> None:
+        if binarization not in ("factual", "check_worthy"):
+            raise ValueError(f"unknown binarization {binarization!r}")
+        self.binarization = binarization
+        self.detector = CheckworthyDetector(root, threads=threads)
+        path = Path(root) / CALIBRATION_FILE
+        if not path.exists():
+            raise SystemExit(
+                f"{path} is missing. Fit it with `python -m scripts.calibrate_checkworthy`; "
+                "the threshold must come from the calibration split, not from a default here."
+            )
+        frozen = json.loads(path.read_text(encoding="utf-8"))
+        self.calibrator = calibrator_from_dict(frozen["calibrator"])
+        self.threshold = float(frozen["thresholds"][binarization])
+
+    def decide_batch(self, sentences: Sequence[str]) -> list[Decision]:
+        if not sentences:
+            return []
+        scored = self.detector.score_batch(list(sentences))
+        # The calibrator is applied to the logits, which is what it was fitted on. Handing it the
+        # softmax would calibrate a distribution rather than the scores that produced one.
+        calibrated = self.calibrator.transform(
+            np.asarray([s.logits for s in scored], dtype=np.float64)
+        )
+        decisions = []
+        for row in calibrated:
+            score = float(row[1] + row[2]) if self.binarization == "factual" else float(row[2])
+            worthy = score >= self.threshold
+            decisions.append(Decision(
+                worthy=worthy,
+                reason="check_worthy" if worthy else f"below_{self.binarization}_threshold",
+                score=score,
+            ))
+        return decisions
+
+    def decide(self, sentence: str) -> Decision:
+        return self.decide_batch([sentence])[0]

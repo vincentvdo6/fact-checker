@@ -188,3 +188,119 @@ def test_softmax_is_a_distribution_per_row():
     got = softmax(np.array([[1.0, 2.0, 3.0], [0.0, 0.0, 0.0]]))
     assert got.sum(axis=1) == pytest.approx([1.0, 1.0])
     assert got[1] == pytest.approx([1 / 3, 1 / 3, 1 / 3]), "equal logits are equal probabilities"
+
+
+# --- the detector as a drop-in filter -----------------------------------------------------------
+
+def test_the_filter_reads_its_threshold_from_the_frozen_artifact():
+    """
+    The cut was swept on ClaimBuster's calibration debates so the 120 SOTU labels stay unspent. A
+    default here that differed from the artifact would undo that silently.
+    """
+    from src.pipeline.detector import CALIBRATION_FILE, DetectorFilter
+
+    path = MODEL / CALIBRATION_FILE
+    if not path.exists():
+        pytest.skip("detector not calibrated")
+    frozen = json.loads(path.read_text(encoding="utf-8"))
+    for binarization in ("factual", "check_worthy"):
+        assert DetectorFilter(binarization).threshold == frozen["thresholds"][binarization]
+
+
+def test_an_uncalibrated_model_is_refused_rather_than_defaulted(tmp_path):
+    """
+    Falling back to 0.5 would be a threshold nobody measured, presented as if it had been.
+    """
+    from src.pipeline.detector import DetectorFilter
+
+    with pytest.raises(SystemExit, match="calibrate_checkworthy"):
+        DetectorFilter("factual", root=contract_at(tmp_path / "v1"))
+
+
+def test_an_unknown_binarization_is_rejected_at_construction():
+    from src.pipeline.detector import DetectorFilter
+
+    with pytest.raises(ValueError, match="unknown binarization"):
+        DetectorFilter("worthiness")
+
+
+def test_the_filter_decision_is_shaped_like_the_rules_decision():
+    """
+    Both drive the same pipeline, so `worthy`, `reason` and truthiness must line up. The score is
+    the honest difference: the rules name a clause, the detector has only a number.
+    """
+    from src.pipeline.detector import Decision
+    from src.pipeline.segment import Decision as RuleDecision
+
+    learned, ruled = Decision(True, "check_worthy", 0.9), RuleDecision(True, "check_worthy")
+    assert bool(learned) == bool(ruled)
+    assert learned.worthy == ruled.worthy
+    assert learned.reason == ruled.reason
+    assert not hasattr(ruled, "score"), "only the learned filter carries a score"
+
+
+def test_a_rejection_names_the_binarization_it_fell_below():
+    """
+    "below_factual_threshold" is not a rule and does not pretend to be. Inventing a rule-shaped
+    reason for a learned score would be legibility that explains nothing.
+    """
+    from src.pipeline.detector import Decision
+
+    assert Decision(False, "below_factual_threshold", 0.1).reason.startswith("below_")
+
+
+@requires_onnx
+@pytest.mark.slow
+def test_the_filter_admits_a_statistic_and_rejects_a_pleasantry():
+    from src.pipeline.detector import DetectorFilter
+
+    claim, greeting = DetectorFilter("factual").decide_batch([
+        "We're consuming 50 percent of the world's cocaine.",
+        "Thank you very much.",
+    ])
+    assert claim.worthy and claim.score > greeting.score
+    assert not greeting.worthy
+
+
+@requires_onnx
+@pytest.mark.slow
+def test_the_calibrator_is_applied_to_logits_not_to_a_softmax():
+    """
+    The calibrator was fitted on logits. Feeding it probabilities would calibrate a distribution
+    rather than the scores that produced one -- no error, just a different and unmeasured mapping.
+    Detected by checking the calibrated score differs from the raw softmax it would otherwise be.
+    """
+    from src.pipeline.detector import CheckworthyDetector, DetectorFilter
+
+    sentence = "The unemployment rate fell to 3.5 percent in June 2019."
+    raw = CheckworthyDetector().score(sentence)
+    assert raw.logits is not None, "Scored carries the logits the calibrator needs"
+    assert raw.logits.shape == (3,)
+    calibrated = DetectorFilter("factual").decide(sentence).score
+    assert calibrated != pytest.approx(raw.factual, abs=1e-9), "calibration changed something"
+
+
+@requires_onnx
+@pytest.mark.slow
+def test_the_filter_s_two_binarizations_are_not_the_same_score():
+    """
+    factual is classes 1 and 2; check_worthy is class 2 alone. Collapsing them in the filter would
+    silently answer this phase's open question -- which definition the demo gates on -- and every
+    number would still compute. Checked on real sentences, since the gap is the mass the model
+    puts on factual-but-unimportant.
+    """
+    from src.pipeline.detector import DetectorFilter
+
+    sentences = [
+        "We're consuming 50 percent of the world's cocaine.",
+        "You know, I saw a movie last night.",
+        "Our auto industry just had its best year ever.",
+        "I think we've seen a deterioration of values.",
+    ]
+    factual = [d.score for d in DetectorFilter("factual").decide_batch(sentences)]
+    worthy = [d.score for d in DetectorFilter("check_worthy").decide_batch(sentences)]
+
+    assert all(f >= w - 1e-9 for f, w in zip(factual, worthy, strict=True)), "factual is a superset"
+    assert any(f - w > 0.02 for f, w in zip(factual, worthy, strict=True)), (
+        "on at least one sentence the unimportant-factual mass separates the two"
+    )
