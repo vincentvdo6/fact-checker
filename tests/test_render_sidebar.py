@@ -162,3 +162,52 @@ def test_each_check_fails_when_the_thing_it_guards_is_removed(name, damage):
     page = render(data)
     assert CHECKS[name](page, data), "precondition: the check passes on the real page"
     assert not CHECKS[name](page.replace(damage, ""), data)
+
+
+# --- the page names the filter that chose its claims --------------------------------------------
+
+def test_the_page_says_which_filter_selected_the_claims():
+    """
+    Two filters admit different sentences from the same transcript. A page that does not name the
+    one that ran is not interpretable: a reader comparing two renderings sees different claims and
+    no reason for the difference.
+    """
+    page = render(payload(row()) | {"filter": "detector", "binarization": "factual"})
+    assert "detector trained on ClaimBuster" in page
+    assert "factual" in page
+
+
+def test_a_rules_run_says_so_rather_than_claiming_a_model():
+    page = render(payload(row()) | {"filter": "rules", "binarization": None})
+    assert "hand-written rules" in page
+    assert "ClaimBuster" not in page
+
+
+def test_a_learned_rejection_is_described_as_a_score_not_as_a_rule():
+    """
+    The detector has no clause to point at. Rendering "below threshold" as though a named rule
+    fired would be legibility that explains nothing, so the page shows the distribution instead.
+    """
+    data = payload(
+        row(),
+        row(index=1, check_worthy=False, filter_reason="below_factual_threshold",
+            outcome=None, filter_score=0.08),
+        row(index=2, check_worthy=False, filter_reason="below_factual_threshold",
+            outcome=None, filter_score=0.12),
+    ) | {"filter": "detector", "binarization": "factual", "filter_threshold": 0.35}
+    page = render(data)
+    assert "scored, not ruled on" in page
+    assert "median check-worthiness" in page
+    assert "0.35" in page, "the threshold it was measured against"
+    assert "fixed on held-out debates before this transcript was seen" in page
+
+
+def test_a_rules_run_shows_no_score_distribution():
+    """There is nothing to show: a rule rejection is a clause, and the clause is already listed."""
+    data = payload(
+        row(),
+        row(index=1, check_worthy=False, filter_reason="no_anchor", outcome=None),
+    ) | {"filter": "rules", "binarization": None}
+    page = render(data)
+    assert "scored, not ruled on" not in page
+    assert "no name, number or date" in page

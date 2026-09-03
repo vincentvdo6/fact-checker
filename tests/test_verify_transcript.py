@@ -179,3 +179,19 @@ def test_a_learned_decision_carries_its_score_and_a_rule_decision_does_not():
     ruled = to_row(sentence(), Decision(False, "no_anchor"), None)
     assert learned["filter_score"] == pytest.approx(0.12)
     assert "filter_score" not in ruled
+
+
+def test_the_run_records_the_threshold_the_filter_actually_used():
+    """
+    The page states the threshold and says it was fixed in advance. If the run stopped recording
+    it, that claim would silently vanish from the rendering while everything still worked.
+    """
+    source = Path("scripts/verify_transcript.py").read_text(encoding="utf-8")
+    # The exact return, not just a mention: chosen.threshold also appears in a progress line, so a
+    # looser check passes while the value never reaches the payload.
+    assert ("return chosen.decide_batch([s.text for s in sentences]), chosen.threshold"
+            in source)
+    assert '"filter_threshold": threshold,' in source
+    assert 'return [check_worthy(s.text) for s in sentences], None' in source, (
+        "the rules have no threshold, and None is the honest value rather than a fabricated one"
+    )

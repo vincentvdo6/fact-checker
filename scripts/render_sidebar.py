@@ -45,6 +45,9 @@ OUTCOME_TEXT = {
         "Declined - low confidence and inadequate evidence, both",
 }
 FILTER_TEXT = {
+    "check_worthy": "kept",
+    "below_factual_threshold": "scored below the check-worthiness threshold",
+    "below_check_worthy_threshold": "scored below the check-worthiness threshold",
     "too_short": "too short to carry a claim",
     "question": "a question, not an assertion",
     "imperative": "an instruction, not an assertion",
@@ -148,6 +151,20 @@ def claim_card(row: dict) -> str:
             f'<div class="why">{why}</div>{evidence}</div>')
 
 
+def filter_text(data: dict) -> str:
+    """
+    Which filter chose the claims, said plainly.
+
+    Two filters admit different sentences from the same transcript, so a page that does not name
+    the one that ran is not interpretable -- a reader comparing two renderings would see different
+    claims and no reason for it.
+    """
+    if data.get("filter") == "rules":
+        return "hand-written rules"
+    binarization = data.get("binarization") or "factual"
+    return f"a detector trained on ClaimBuster ({binarization})"
+
+
 def render(data: dict) -> str:
     rows = data["rows"]
     verified = [r for r in rows if r.get("outcome") in
@@ -176,13 +193,29 @@ def render(data: dict) -> str:
         f"<li>{n} &mdash; {esc(FILTER_TEXT.get(reason, reason))}</li>"
         for reason, n in sorted(skipped.items(), key=lambda kv: -kv[1])
     )
+    # A learned filter has no clause to name, so the page shows the distribution of what it did
+    # score instead. Printing "below threshold" alone would look like a rule and explain nothing.
+    scores = [r["filter_score"] for r in rows if not r["check_worthy"] and "filter_score" in r]
+    skip_detail = ""
+    if scores:
+        ordered = sorted(scores)
+        median = ordered[len(ordered) // 2]
+        threshold = data.get("filter_threshold")
+        against = f" against a threshold of {threshold:.2f}" if threshold is not None else ""
+        skip_detail = (
+            f'<div class="sub" style="margin-top:8px">These were scored, not ruled on: the '
+            f'detector gave them a median check-worthiness of {median:.2f}{against}, and that '
+            f'threshold was fixed on held-out debates before this transcript was seen. A learned '
+            f'filter has no clause to point at, so the number is what there is.</div>'
+        )
 
     return f"""<title>Sidebar - {esc(data['transcript'])}</title>
 <style>{STYLE}</style>
 <div class="wrap">
 <h1>Calibrated claim verification</h1>
 <div class="sub">{esc(data['transcript'])} &middot; {data['sentences']:,} sentences &middot;
-model trained on FEVER, evidence from a June 2017 Wikipedia dump &middot;
+claims selected by {esc(filter_text(data))} &middot;
+verdicts from a model trained on FEVER, evidence from a June 2017 Wikipedia dump &middot;
 <a href="{esc(data['source'])}">source transcript</a></div>
 
 <div class="warn"><b>These claims are outside the distribution the system was measured on.</b>
@@ -208,6 +241,7 @@ reported as missed rather than retuned.</div>
 
 <h2>Sentences the filter skipped before any model ran</h2>
 <ul class="skipped">{skip_rows}</ul>
+{skip_detail}
 
 <footer>Abstention is an outcome, not an error. A declined claim is the system saying it cannot
 answer; &ldquo;no evidence found&rdquo; is the system saying the evidence does not exist. Those

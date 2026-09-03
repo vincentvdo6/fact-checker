@@ -38,7 +38,7 @@ TRANSCRIPTS = Path("data/transcripts")
 RUNS = Path("runs/demo")
 
 
-def select(sentences, args) -> list:
+def select(sentences, args) -> tuple[list, float | None]:
     """
     Which filter decides what reaches the model.
 
@@ -48,11 +48,11 @@ def select(sentences, args) -> list:
     with, which makes them the better instrument when the question is *why* something was skipped.
     """
     if args.filter == "rules":
-        return [check_worthy(s.text) for s in sentences]
+        return [check_worthy(s.text) for s in sentences], None
     chosen = DetectorFilter(args.binarization)
     print(f"filter: learned detector, {args.binarization} >= {chosen.threshold} "
           f"(threshold frozen on ClaimBuster's calibration debates)", flush=True)
-    return chosen.decide_batch([s.text for s in sentences])
+    return chosen.decide_batch([s.text for s in sentences]), chosen.threshold
 
 
 def to_row(sentence, decision, judgement) -> dict:
@@ -116,7 +116,8 @@ def main() -> int:
 
     text = (TRANSCRIPTS / f"{args.transcript}.txt").read_text(encoding="utf-8")
     sentences = segment(text)
-    decisions = list(zip(sentences, select(sentences, args), strict=True))
+    chosen, threshold = select(sentences, args)
+    decisions = list(zip(sentences, chosen, strict=True))
     all_worthy = [s for s, d in decisions if d.worthy]
     # --limit truncates what gets verified, never what gets counted: reporting the truncated
     # number as the check-worthy total would understate how much the filter admitted.
@@ -145,6 +146,7 @@ def main() -> int:
         "variant": args.variant,
         "filter": args.filter,
         "binarization": args.binarization if args.filter == "detector" else None,
+        "filter_threshold": threshold,
         "source": "https://www.govinfo.gov/content/pkg/DCPD-201600012/html/DCPD-201600012.htm",
         "sentences": len(sentences),
         "check_worthy": len(all_worthy),
