@@ -21,7 +21,11 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from scripts.make_checkworthy_notebook import kernel_metadata, to_notebook
+from scripts.make_checkworthy_notebook import (
+    export_metadata,
+    kernel_metadata,
+    to_notebook,
+)
 
 TEMPLATE = Path("notebooks/checkworthy_notebook.py")
 
@@ -133,3 +137,47 @@ def test_the_committed_kernel_definition_matches_the_generator():
     if not path.exists():
         pytest.skip("kernel definition not generated yet")
     assert json.loads(path.read_text(encoding="utf-8")) == kernel_metadata("vincentvdo6")
+
+
+# --- the ONNX export kernel ---------------------------------------------------------------------
+
+def test_the_export_mounts_the_trained_kernel_rather_than_a_dataset():
+    """
+    The weights are another kernel's output, so mounting them directly avoids a 738 MB round trip
+    through a dataset upload. Attaching a dataset instead would find no model_v1 to export.
+    """
+    export = export_metadata("someone")
+    assert export["kernel_sources"] == ["someone/checkworthy-detector"]
+    assert export["dataset_sources"] == []
+
+
+def test_the_export_does_not_ask_for_a_gpu():
+    """Tracing a graph is CPU work, and Kaggle allows only two concurrent GPU sessions."""
+    assert export_metadata("someone")["enable_gpu"] is False
+
+
+def test_the_export_is_not_named_after_the_trainer_or_after_fever():
+    export = export_metadata("someone")
+    assert export["id"] == "someone/checkworthy-onnx"
+    assert "fever" not in export["id"]
+    assert export["id"] != kernel_metadata("someone")["id"], "two kernels, two ids"
+
+
+def test_the_committed_export_definition_matches_the_generator():
+    path = Path("notebooks/kernels/checkworthy-onnx.json")
+    if not path.exists():
+        pytest.skip("export kernel definition not generated yet")
+    assert json.loads(path.read_text(encoding="utf-8")) == export_metadata("vincentvdo6")
+
+
+def test_the_export_notebook_is_the_same_program_as_the_committed_template():
+    """
+    export_onnx.py is task-agnostic -- it globs for model_v1 and reads max_length from the contract
+    beside it -- so the same template serves the verdict model and this one. That only holds if the
+    conversion does not quietly alter it.
+    """
+    built = to_notebook(Path("notebooks/export_onnx.py").read_text(encoding="utf-8"))
+    code = "".join("".join(c["source"]) for c in built["cells"] if c["cell_type"] == "code")
+    assert "torch.onnx.export" in code
+    assert "dynamo=False" in code, "the TorchScript exporter, which Kaggle's image can run"
+    assert "**/model_v1" in code, "the model is discovered, not hard-coded to one task"
