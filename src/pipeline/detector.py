@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -36,6 +37,25 @@ MODEL = Path("models/checkworthy/v1")
 CALIBRATION_FILE = "calibration.json"
 ONNX_FILE = "onnx/model.onnx"
 DEFAULT_THREADS = 4
+# Sentences per forward pass. DeBERTa's disentangled attention materialises a Tile whose size grows
+# with batch * sequence^2, and onnxruntime refuses any tensor over 4 GB -- so a caller that handed
+# in a whole split got InvalidArgument rather than a slow answer. Chunking lives here so no caller
+# has to know that, and the number is well under the limit at max_length 128.
+DEFAULT_BATCH = 32
+
+# A stated prior, not a fitted parameter, and the distinction matters.
+#
+# ClaimBuster holds 3 sentences of three words in 22,501 and none shorter, so the calibration split
+# contains no evidence about short input at all -- every floor from 0 to 4 scores identically there.
+# The 2016 State of the Union is 7.2% under four words ("Period.", "Just a guess.", "See?"). That
+# is a coverage gap in the training distribution rather than a threshold to tune, and it is why the
+# detector scored "I've done it." as a claim: it has never seen anything of the kind.
+#
+# Four words is the same floor the hand-written rules used, on the same reasoning -- a sentence
+# that short cannot carry a subject, a predicate and something to look up. It is applied because
+# the definition says so, not because a sweep chose it, and it is recorded that way.
+MIN_WORDS = 4
+_WORD = re.compile(r"[A-Za-z][A-Za-z'’-]*")
 
 
 def softmax(logits: np.ndarray) -> np.ndarray:
@@ -114,7 +134,26 @@ class CheckworthyDetector:
     def score(self, sentence: str) -> Scored:
         return self.score_batch([sentence])[0]
 
-    def score_batch(self, sentences: Sequence[str]) -> list[Scored]:
+    def score_batch(self, sentences: Sequence[str], *, batch: int = DEFAULT_BATCH) -> list[Scored]:
+        """
+        Score any number of sentences, chunked so the graph never sees an oversized tensor.
+
+        Padding is per chunk, to the longest member of that chunk, which is also why chunking does
+        not change any individual score: attention is masked either way.
+        """
+        # A bare str satisfies Sequence[str] and would be scored one character at a time -- 19
+        # Decisions for one sentence, silently, since every downstream length check still agrees.
+        if isinstance(sentences, str):
+            raise TypeError("score_batch takes a sequence of sentences, not a single string")
+        # Materialised once. Re-listing inside the loop cost 110x the __getitem__ calls on a lazy
+        # Sequence, which is invisible on a list and quadratic on anything else.
+        items = list(sentences)
+        scored: list[Scored] = []
+        for start in range(0, len(items), batch):
+            scored.extend(self._score_chunk(items[start:start + batch]))
+        return scored
+
+    def _score_chunk(self, sentences: Sequence[str]) -> list[Scored]:
         if not sentences:
             return []
         batch = self.tokenizer(
@@ -175,10 +214,12 @@ class DetectorFilter:
         *,
         root: str | Path = MODEL,
         threads: int | None = None,
+        min_words: int = MIN_WORDS,
     ) -> None:
         if binarization not in ("factual", "check_worthy"):
             raise ValueError(f"unknown binarization {binarization!r}")
         self.binarization = binarization
+        self.min_words = min_words
         self.detector = CheckworthyDetector(root, threads=threads)
         path = Path(root) / CALIBRATION_FILE
         if not path.exists():
@@ -191,17 +232,26 @@ class DetectorFilter:
         self.threshold = float(frozen["thresholds"][binarization])
 
     def decide_batch(self, sentences: Sequence[str]) -> list[Decision]:
-        if not sentences:
+        if isinstance(sentences, str):
+            raise TypeError("decide_batch takes a sequence of sentences, not a single string")
+        # len() rather than truthiness: a numpy array of sentences raises "truth value ambiguous".
+        items = list(sentences)
+        if len(items) == 0:
             return []
-        scored = self.detector.score_batch(list(sentences))
+        scored = self.detector.score_batch(items)
         # The calibrator is applied to the logits, which is what it was fitted on. Handing it the
         # softmax would calibrate a distribution rather than the scores that produced one.
         calibrated = self.calibrator.transform(
             np.asarray([s.logits for s in scored], dtype=np.float64)
         )
         decisions = []
-        for row in calibrated:
+        for sentence, row in zip(items, calibrated, strict=True):
             score = float(row[1] + row[2]) if self.binarization == "factual" else float(row[2])
+            # The floor is applied to the model's answer rather than instead of it, so the score is
+            # still reported: a reader can see the detector was confident and was overruled.
+            if len(_WORD.findall(sentence)) < self.min_words:
+                decisions.append(Decision(False, "too_short", score))
+                continue
             worthy = score >= self.threshold
             decisions.append(Decision(
                 worthy=worthy,

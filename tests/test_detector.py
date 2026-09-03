@@ -304,3 +304,113 @@ def test_the_filter_s_two_binarizations_are_not_the_same_score():
     assert any(f - w > 0.02 for f, w in zip(factual, worthy, strict=True)), (
         "on at least one sentence the unimportant-factual mass separates the two"
     )
+
+
+# --- robustness to input unlike the training data ------------------------------------------------
+
+def test_a_large_batch_is_chunked_rather_than_handed_to_the_graph_whole():
+    """
+    DeBERTa's disentangled attention materialises a Tile whose size grows with batch * sequence^2,
+    and onnxruntime refuses any tensor over 4 GB. Handing it a whole split raised InvalidArgument
+    -- which the transcript never triggered at 359 sentences and every evaluation did at 3,509.
+    """
+    from src.pipeline.detector import DEFAULT_BATCH
+
+    source = DETECTOR.read_text(encoding="utf-8")
+    assert 1 <= DEFAULT_BATCH <= 64
+    assert "for start in range(0, len(items), batch):" in source
+    assert "items = list(sentences)" in source, "materialised once, not per chunk"
+    assert "self._score_chunk(" in source
+
+
+def test_the_length_floor_is_a_prior_and_says_so():
+    """
+    ClaimBuster holds 3 sentences of three words in 22,501 and none shorter, so the calibration
+    split has no evidence about short input -- every floor from 0 to 4 scores identically there.
+    The floor is therefore a definitional choice, and recording it as a fitted one would be a
+    quiet lie about where a number came from.
+    """
+    from src.pipeline.detector import MIN_WORDS
+
+    assert MIN_WORDS == 4
+    source = DETECTOR.read_text(encoding="utf-8")
+    assert "stated prior, not a fitted parameter" in source
+    assert "coverage gap" in source
+
+
+@requires_onnx
+@pytest.mark.slow
+def test_a_sentence_too_short_to_carry_a_claim_is_dropped_whatever_the_model_says():
+    """
+    "I've done it." scores 0.875 -- the detector is confidently wrong on input unlike anything it
+    trained on. The floor overrules it, and the score is kept so a reader can see that it did.
+    """
+    from src.pipeline.detector import DetectorFilter
+
+    decision = DetectorFilter("factual").decide("I've done it.")
+    assert not decision.worthy
+    assert decision.reason == "too_short"
+    assert decision.score > 0.5, "the model wanted to admit it; the floor is what stopped it"
+
+
+@requires_onnx
+@pytest.mark.slow
+def test_the_floor_leaves_ordinary_sentences_alone():
+    from src.pipeline.detector import DetectorFilter
+
+    decision = DetectorFilter("factual").decide("Our auto industry just had its best year ever.")
+    assert decision.worthy
+    assert decision.reason == "check_worthy"
+
+
+@requires_onnx
+@pytest.mark.slow
+def test_chunking_does_not_change_any_individual_score():
+    """
+    Padding is per chunk, so a different chunk size pads differently. If that moved a score, the
+    filter's answer would depend on how many sentences happened to be scored together.
+    """
+    from src.pipeline.detector import CheckworthyDetector
+
+    sentences = [
+        "Our auto industry just had its best year ever.",
+        "Thank you.",
+        "We're consuming 50 percent of the world's cocaine and that is a problem for everyone.",
+        "I think we've seen a deterioration of values.",
+        "The rate fell to 3.5 percent.",
+    ]
+    detector = CheckworthyDetector()
+    whole = detector.score_batch(sentences, batch=len(sentences))
+    split = detector.score_batch(sentences, batch=2)
+    for a, b in zip(whole, split, strict=True):
+        assert a.probabilities == pytest.approx(b.probabilities, abs=1e-4)
+
+
+def test_a_bare_string_is_refused_rather_than_scored_per_character():
+    """
+    `str` satisfies `Sequence[str]`, so passing one sentence instead of a list returned one
+    Decision per character -- 19 of them for a short sentence, with no error, because every
+    downstream length check still agreed. Silent and completely wrong.
+    """
+    detector = CheckworthyDetector.__new__(CheckworthyDetector)
+    with pytest.raises(TypeError, match="not a single string"):
+        detector.score_batch("Wages rose in 2019.")
+
+    from src.pipeline.detector import DetectorFilter
+
+    unbuilt = DetectorFilter.__new__(DetectorFilter)
+    with pytest.raises(TypeError, match="not a single string"):
+        unbuilt.decide_batch("Wages rose in 2019.")
+
+
+def test_an_empty_sequence_is_length_checked_rather_than_truth_tested():
+    """
+    `if not sentences` raises "truth value of an array is ambiguous" on a numpy array of
+    sentences. len() == 0 works for every sequence a caller might reasonably hand in.
+    """
+    from src.pipeline.detector import DetectorFilter
+
+    unbuilt = DetectorFilter.__new__(DetectorFilter)
+    assert unbuilt.decide_batch(np.array([], dtype=object)) == []
+    source = DETECTOR.read_text(encoding="utf-8")
+    assert "if len(items) == 0:" in source
