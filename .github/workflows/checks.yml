@@ -1,0 +1,46 @@
+# The suite a fresh clone can actually run.
+#
+# Nothing here fetches the 4.2 GB corpus, the 1.5 GB index or the two 738 MB ONNX graphs -- those
+# are gitignored and rebuilt by script, and a CI job that needed them would either be permanently
+# red or quietly skip everything and report green. What runs is the 762 tests that hold without
+# them; the 15 that need real artifacts skip by their own guards and say so in the summary.
+#
+# The point is not coverage. It is that a reader can see the repository checking itself, and that
+# a change breaking the fast suite cannot be pushed unnoticed.
+
+name: checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  suite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: pip install -r requirements.txt
+
+      - name: Lint
+        run: python -m ruff check .
+
+      - name: Fast suite
+        # Two hash seeds, because dict and set ordering has silently decided a result here before.
+        run: |
+          python -m pytest -m "not slow" -q
+          PYTHONHASHSEED=1 python -m pytest -m "not slow" -q
+
+      - name: Report what was skipped
+        if: always()
+        # A green run that skipped everything is worse than a red one. This prints the reasons so
+        # the difference is visible rather than inferred from a pass count.
+        run: python -m pytest -m "not slow" -q -rs | tail -25
