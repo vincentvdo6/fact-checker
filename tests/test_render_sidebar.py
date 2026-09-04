@@ -16,6 +16,8 @@ so these drive it against pages that are deliberately wrong.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from scripts.render_sidebar import CHECKS, render
@@ -235,3 +237,63 @@ def test_the_score_distribution_excludes_sentences_the_floor_overruled():
     assert "median check-worthiness of 0.10" in page, "0.90 was ruled on, not scored"
     assert "A further 1 were ruled out before the score was consulted" in page
 
+
+
+# --- why the verdicts are what they are -----------------------------------------------------
+
+MEASURED = {"claims": 40, "relevant": 14, "relevance_rate": 0.35,
+            "auc": {"relevance_here": 0.5797, "relevance_here_ci": [0.395, 0.755]}}
+
+
+def test_the_page_says_retrieval_mostly_found_nothing_usable():
+    """
+    54 of 60 answers come back "no evidence found". A reader seeing only that concludes the verdict
+    model is weak; the measured cause is that retrieval returned something bearing on the claim for
+    barely a third of them. Reporting the symptom without the cause is the page misleading by
+    omission rather than by statement.
+    """
+    page = render(payload(row()), MEASURED)
+    assert "could bear on the claim" in page
+    assert "35%" in page
+    assert "40" in page and "14" in page, "the sample is quoted as a sample"
+
+
+def test_the_inconclusive_auc_is_not_put_on_the_page():
+    """
+    The same artifact holds an AUC of 0.5797 whose interval spans chance and the FEVER number. It
+    settles nothing, and a number on a page stops being read as inconclusive no matter what the
+    caption says. The relevance rate is a direct count and belongs there; the AUC does not.
+    """
+    page = render(payload(row()), MEASURED)
+    assert "0.5797" not in page
+    assert "0.58" not in page
+    assert "AUC" not in page
+
+
+def test_a_run_without_the_measurement_simply_omits_it():
+    """The claim needs labels. Without them the page says nothing rather than guessing a rate."""
+    page = render(payload(row()), None)
+    assert "could bear on the claim" not in page
+
+
+def test_checkpoint_four_notices_if_the_retrieval_note_goes_missing():
+    data = payload(row(), row(index=1, outcome="declined_both", verdict=None, band=None))
+    data["retrieval"] = MEASURED
+    page = render(data)
+    check = CHECKS["the retrieval quality behind the verdicts is stated"]
+    assert check(page, data)
+    assert not check(page.replace("could bear on the claim", ""), data)
+
+
+def test_the_retrieval_check_reads_the_payload_not_the_filesystem():
+    """
+    A check whose answer depends on which files happen to sit on the machine passes or fails for
+    reasons that have nothing to do with the page. It has to be decidable from what render was
+    handed, which is also what lets it be driven from a fixture.
+    """
+    source = Path("scripts/render_sidebar.py").read_text(encoding="utf-8")
+    assert 'not data.get("retrieval")' in source
+    assert "RETRIEVAL.exists()" not in source
+
+    without = payload(row())
+    assert CHECKS["the retrieval quality behind the verdicts is stated"](render(without), without)

@@ -30,6 +30,7 @@ import sys
 from pathlib import Path
 
 RUNS = Path("runs/demo")
+RETRIEVAL = Path("runs/sufficiency-transfer/metrics.json")
 
 VERDICT_TEXT = {
     "supported": "Supported",
@@ -151,6 +152,33 @@ def claim_card(row: dict) -> str:
             f'<div class="why">{why}</div>{evidence}</div>')
 
 
+def retrieval_note(measured: dict | None) -> str:
+    """
+    Why the answers are mostly "no evidence found", stated rather than left to be inferred.
+
+    A reader seeing 54 of 60 answers come back NEI can reasonably conclude the verdict model is
+    weak. On this transcript it is not: retrieval returned something that could bear on the claim
+    for barely a third of them, and NEI is the correct reading of the other two thirds. Without
+    this the page reports the symptom and hides the cause.
+
+    The rate is a labelled sample, so it is quoted as one. What is deliberately NOT shown is the
+    sufficiency AUC from the same file -- its interval spans chance and the FEVER number, so it
+    settles nothing and putting an inconclusive number on a page is how it stops being read as one.
+    """
+    if not measured:
+        return ""
+    n, relevant = measured["claims"], measured["relevant"]
+    return (
+        f'<div class="warn"><b>Retrieval found something usable for about a third of these '
+        f'claims.</b>On a hand-labelled sample of {n} of them, {relevant} had at least one '
+        f'retrieved sentence that could bear on the claim &mdash; {measured["relevance_rate"]:.0%}. '
+        f'&ldquo;Our auto industry just had its best year ever&rdquo; retrieved '
+        f'<i>Auto-Owners Insurance</i>. So the verdicts below are mostly &ldquo;no evidence '
+        f'found&rdquo;, and on this evidence that is the right answer rather than a weak model.'
+        f'</div>'
+    )
+
+
 def filter_text(data: dict) -> str:
     """
     Which filter chose the claims, said plainly.
@@ -165,7 +193,8 @@ def filter_text(data: dict) -> str:
     return f"a detector trained on ClaimBuster ({binarization})"
 
 
-def render(data: dict) -> str:
+def render(data: dict, measured: dict | None = None) -> str:
+    measured = measured if measured is not None else data.get("retrieval")
     rows = data["rows"]
     verified = [r for r in rows if r.get("outcome") in
                 {"answered", "declined_low_confidence", "declined_insufficient_evidence",
@@ -227,6 +256,7 @@ verdicts from a model trained on FEVER, evidence from a June 2017 Wikipedia dump
 
 <div class="warn"><b>These claims are outside the distribution the system was measured on.</b>
 {esc(data['calibration']['out_of_domain'])}</div>
+{retrieval_note(measured)}
 
 <div class="stats">
  <div class="stat"><div class="n">{data['sentences']:,}</div><div class="k">sentences</div></div>
@@ -267,6 +297,8 @@ CHECKS = {
         lambda page, data: "Sentences the filter skipped" in page,
     "NEI and abstention are labelled differently":
         lambda page, data: "No evidence found" in page or "No verdict" in page,
+    "the retrieval quality behind the verdicts is stated":
+        lambda page, data: not data.get("retrieval") or "could bear on the claim" in page,
 }
 
 
@@ -274,10 +306,14 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run", default=str(RUNS))
     parser.add_argument("--check", action="store_true", help="Checkpoint 4: does the page tell the truth?")
+    parser.add_argument("--retrieval", default=str(RETRIEVAL),
+                        help="the retrieval-relevance measurement, if it has been run")
     args = parser.parse_args()
 
     run = Path(args.run)
     data = json.loads((run / "verdicts.json").read_text(encoding="utf-8"))
+    if Path(args.retrieval).exists():
+        data["retrieval"] = json.loads(Path(args.retrieval).read_text(encoding="utf-8"))
     page = render(data)
     out = run / "sidebar.html"
     out.write_text(page, encoding="utf-8")
