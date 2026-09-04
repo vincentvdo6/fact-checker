@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -67,6 +68,27 @@ NOTEBOOK_FOR = {
 }
 
 
+def prefix_for(name: str) -> str:
+    """
+    The kernel-name prefix, taken from the dataset rather than assumed.
+
+    Every id used to begin `fever-verdict-`, which made `fever-verdict-claim-only-averitec` -- a
+    kernel named after FEVER that trains on AVeriTeC and never touches FEVER at all. The name is
+    the only thing distinguishing ten otherwise-identical runs on the Kaggle listing, so one that
+    lies about its data is worse than a long one.
+
+    Deriving it from the attached dataset makes the name correct by construction: a kernel cannot
+    be renamed without moving its data, and a new dataset cannot arrive under an old name.
+
+    Note for anyone reconciling this against Kaggle: `claim_only_averitec` and `gold_averitec` were
+    pushed and run under the old FEVER-prefixed ids, and the Phase 06 results came from those runs.
+    Re-pushing creates correctly-named kernels; the numbers are unaffected, since the notebook and
+    the dataset are unchanged.
+    """
+    dataset = DATASETS[name]
+    return re.sub(r"-v\d+$", "", dataset)
+
+
 def kernel_metadata(name: str, owner: str) -> dict:
     """
     The Kaggle kernel definition, generated rather than hand-kept.
@@ -80,8 +102,8 @@ def kernel_metadata(name: str, owner: str) -> dict:
     misspelling and falls back to the P100, which cannot run Kaggle's installed torch at all.
     """
     return {
-        "id": f"{owner}/fever-verdict-{name.replace('_', '-')}",
-        "title": f"fever verdict {name.replace('_', ' ')}",
+        "id": f"{owner}/{prefix_for(name)}-{stem(name).replace('_', '-')}",
+        "title": f"{prefix_for(name).replace('-', ' ')} {stem(name).replace('_', ' ')}",
         "code_file": f"kaggle_verdict_{NOTEBOOK_FOR.get(name, name)}.ipynb",
         "language": "python",
         "kernel_type": "notebook",
@@ -92,6 +114,19 @@ def kernel_metadata(name: str, owner: str) -> dict:
         "competition_sources": [],
         "kernel_sources": [],
     }
+
+
+def stem(name: str) -> str:
+    """
+    The variant, with any dataset qualifier removed.
+
+    `claim_only_averitec` on the `averitec-verdict` dataset is just `claim_only` -- repeating the
+    corpus in the suffix would give `averitec-verdict-claim-only-averitec`.
+    """
+    for token in prefix_for(name).split("-"):
+        if name.endswith(f"_{token}"):
+            return name[: -(len(token) + 1)]
+    return name
 
 
 def cells(source: str) -> list[tuple[str, str]]:

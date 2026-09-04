@@ -1,6 +1,6 @@
 {
-  "id": "vincentvdo6/fever-verdict-claim-only-averitec",
-  "title": "fever verdict claim only averitec",
+  "id": "vincentvdo6/averitec-verdict-claim-only",
+  "title": "averitec verdict claim only",
   "code_file": "kaggle_verdict_claim_only.ipynb",
   "language": "python",
   "kernel_type": "notebook",

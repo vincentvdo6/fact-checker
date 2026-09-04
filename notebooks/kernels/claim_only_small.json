@@ -1,6 +1,6 @@
 {
-  "id": "vincentvdo6/fever-verdict-claim-only-small",
-  "title": "fever verdict claim only small",
+  "id": "vincentvdo6/fever-verdict-small-claim-only",
+  "title": "fever verdict small claim only",
   "code_file": "kaggle_verdict_claim_only.ipynb",
   "language": "python",
   "kernel_type": "notebook",
