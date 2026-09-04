@@ -194,19 +194,26 @@ def render(data: dict) -> str:
         for reason, n in sorted(skipped.items(), key=lambda kv: -kv[1])
     )
     # A learned filter has no clause to name, so the page shows the distribution of what it did
-    # score instead. Printing "below threshold" alone would look like a rule and explain nothing.
-    scores = [r["filter_score"] for r in rows if not r["check_worthy"] and "filter_score" in r]
+    # score. Only the threshold rejections belong in that median: the length floor overrules the
+    # model regardless of score -- one sentence it dropped scored 0.875 -- so folding those in
+    # would understate the median and describe as "scored" something that was ruled on.
+    scored = [r["filter_score"] for r in rows
+              if not r["check_worthy"] and str(r["filter_reason"]).startswith("below_")]
+    ruled = sum(1 for r in rows
+                if not r["check_worthy"] and not str(r["filter_reason"]).startswith("below_"))
     skip_detail = ""
-    if scores:
-        ordered = sorted(scores)
-        median = ordered[len(ordered) // 2]
+    if scored:
+        median = sorted(scored)[len(scored) // 2]
         threshold = data.get("filter_threshold")
         against = f" against a threshold of {threshold:.2f}" if threshold is not None else ""
+        overruled = (f" A further {ruled} were ruled out before the score was consulted."
+                     if ruled else "")
         skip_detail = (
-            f'<div class="sub" style="margin-top:8px">These were scored, not ruled on: the '
-            f'detector gave them a median check-worthiness of {median:.2f}{against}, and that '
-            f'threshold was fixed on held-out debates before this transcript was seen. A learned '
-            f'filter has no clause to point at, so the number is what there is.</div>'
+            f'<div class="sub" style="margin-top:8px">{len(scored)} of these were scored rather '
+            f'than ruled on: the detector gave them a median check-worthiness of {median:.2f}'
+            f'{against}, and that threshold was fixed on held-out debates before this transcript '
+            f'was seen. A learned filter has no clause to point at, so the number is what there '
+            f'is.{overruled}</div>'
         )
 
     return f"""<title>Sidebar - {esc(data['transcript'])}</title>

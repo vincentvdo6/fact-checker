@@ -196,7 +196,7 @@ def test_a_learned_rejection_is_described_as_a_score_not_as_a_rule():
             outcome=None, filter_score=0.12),
     ) | {"filter": "detector", "binarization": "factual", "filter_threshold": 0.35}
     page = render(data)
-    assert "scored, not ruled on" in page
+    assert "scored rather than ruled on" in page
     assert "median check-worthiness" in page
     assert "0.35" in page, "the threshold it was measured against"
     assert "fixed on held-out debates before this transcript was seen" in page
@@ -209,5 +209,29 @@ def test_a_rules_run_shows_no_score_distribution():
         row(index=1, check_worthy=False, filter_reason="no_anchor", outcome=None),
     ) | {"filter": "rules", "binarization": None}
     page = render(data)
-    assert "scored, not ruled on" not in page
+    assert "scored rather than ruled on" not in page
     assert "no name, number or date" in page
+
+
+def test_the_score_distribution_excludes_sentences_the_floor_overruled():
+    """
+    Two rejection mechanisms, and only one of them consulted the score. The length floor drops a
+    sentence whatever the model said -- one it dropped scored 0.875 -- so folding those into the
+    median both understates it and calls "scored" something that was ruled on. The page reports
+    them separately or it is describing the wrong thing.
+    """
+    data = payload(
+        row(),
+        row(index=1, check_worthy=False, filter_reason="below_factual_threshold",
+            outcome=None, filter_score=0.10),
+        row(index=2, check_worthy=False, filter_reason="below_factual_threshold",
+            outcome=None, filter_score=0.10),
+        row(index=3, check_worthy=False, filter_reason="too_short",
+            outcome=None, filter_score=0.90),
+    ) | {"filter": "detector", "binarization": "factual", "filter_threshold": 0.35}
+    page = render(data)
+
+    assert "2 of these were scored rather than ruled on" in page
+    assert "median check-worthiness of 0.10" in page, "0.90 was ruled on, not scored"
+    assert "A further 1 were ruled out before the score was consulted" in page
+
