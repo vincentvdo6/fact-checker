@@ -100,3 +100,15 @@ class TranscriptWindow:
         chosen = preceding[-self.context_size:] if self.context_size else []
         return ClaimContext(claim, tuple(chosen))
 
+    def current(self, context: ClaimContext) -> bool:
+        if self.segments.get(context.claim.id) != context.claim:
+            return False
+        if any(self.segments[s.id] != s for s in context.preceding if s.id in self.segments):
+            return False
+        # Retired context cannot be revised; its immutable snapshot remains valid. Forgetting it
+        # would requeue old claims with less context every time the history window advances.
+        preceding = [s for s in context.preceding if s.id not in self.segments]
+        preceding.extend(self.snapshot(context.claim.id).preceding)
+        preceding.sort(key=lambda s: (s.end, s.start, s.id))
+        chosen = preceding[-self.context_size:] if self.context_size else []
+        return tuple(chosen) == context.preceding

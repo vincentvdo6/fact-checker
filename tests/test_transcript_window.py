@@ -55,6 +55,35 @@ def test_context_is_final_prior_nonoverlapping_and_same_speaker():
     assert window.snapshot("claim") == context
 
 
+def test_corrections_invalidate_claim_and_context_dependencies():
+    window = TranscriptWindow()
+    window.accept(update())
+    context = window.accept(update("b", 2))
+    assert window.current(context)
+    window.accept(update(revision=1, text="Jobs fell."))
+    assert not window.current(context)
+    fresh = window.snapshot("b")
+    assert fresh.dependencies == (("a", 1), ("b", 0))
+    window.accept(update("b", 2, revision=1, final=False))
+    assert not window.current(fresh)
+
+
+def test_newly_final_context_also_invalidates_an_existing_snapshot():
+    window = TranscriptWindow()
+    window.accept(update(final=False))
+    context = window.accept(update("b", 2))
+    window.accept(update(revision=1))
+    assert not window.current(context)
+
+
+def test_evicted_claim_is_stale_instead_of_crashing():
+    window = TranscriptWindow(capacity=2, context_size=1)
+    context = window.accept(update())
+    window.accept(update("b", 2))
+    window.accept(update("c", 4))
+    assert not window.current(context)
+
+
 def test_zero_duration_peer_is_not_prior_context():
     window = TranscriptWindow()
     window.accept(update("peer", 0, end=0))
