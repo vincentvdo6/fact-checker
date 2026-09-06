@@ -6,6 +6,7 @@ import pytest
 
 from src.pipeline.context import CONTEXT_WORDS, SpeechMetadata, build_query
 from src.pipeline.transcript import ClaimContext, TranscriptUpdate
+from src.pipeline.verify import Verifier
 
 
 def context(text="Our businesses added jobs since it became law.", previous="The Affordable Care Act became law."):
@@ -60,3 +61,16 @@ def test_unknown_query_mode_is_rejected():
     with pytest.raises(ValueError, match="query mode"):
         build_query(context(), SpeechMetadata(), mode="guess")
 
+
+def test_query_changes_retrieval_but_not_the_model_claim(monkeypatch):
+    verifier = Verifier.__new__(Verifier)
+    calls = []
+    evidence, scores = [("Page", 0, "Evidence")], [1.0]
+    monkeypatch.setattr(verifier, "retrieve", lambda query: calls.append(query) or (evidence, scores))
+    monkeypatch.setattr(verifier, "judge", lambda claim, rows, values: (claim, rows, values))
+    assert verifier.verify("It passed.", query="It passed. Affordable Care Act") == ("It passed.", evidence, scores)
+    assert calls == ["It passed. Affordable Care Act"]
+    verifier.verify("Original claim")
+    assert calls[-1] == "Original claim"
+    with pytest.raises(ValueError, match="empty"):
+        verifier.verify("Original claim", query=" ")

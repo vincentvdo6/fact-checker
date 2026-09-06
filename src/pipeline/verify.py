@@ -237,9 +237,11 @@ class Verifier:
             scores.append(float(score))
         return evidence, scores
 
-    def verify(self, claim: str) -> Judgement:
-        """Retrieve and judge, the whole path a transcript claim takes."""
-        evidence, scores = self.retrieve(claim)
+    def verify(self, claim: str, *, query: str | None = None) -> Judgement:
+        """An optional retrieval query changes evidence selection, never the asserted claim."""
+        if query is not None and not query.strip():
+            raise ValueError("retrieval query must not be empty")
+        evidence, scores = self.retrieve(query if query is not None else claim)
         return self.judge(claim, evidence, scores)
 
     def close(self) -> None:
