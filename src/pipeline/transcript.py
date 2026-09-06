@@ -8,6 +8,7 @@ verdict by its claim revision and the exact context revisions it consumed.
 from __future__ import annotations
 
 import math
+from collections import OrderedDict
 from dataclasses import dataclass
 
 
@@ -46,4 +47,56 @@ class TranscriptUpdate:
             return cls(**value)
         except TypeError as error:
             raise ValueError(f"invalid transcript fields: {error}") from error
+
+
+@dataclass(frozen=True, slots=True)
+class ClaimContext:
+    claim: TranscriptUpdate
+    preceding: tuple[TranscriptUpdate, ...]
+
+    @property
+    def dependencies(self) -> tuple[tuple[str, int], ...]:
+        return tuple((s.id, s.revision) for s in (*self.preceding, self.claim))
+
+
+class TranscriptWindow:
+    """Retain a bounded revision window; reject late new segments instead of using future text."""
+
+    def __init__(self, *, capacity: int = 64, context_size: int = 2) -> None:
+        if type(capacity) is not int or type(context_size) is not int or not 0 <= context_size < capacity:
+            raise ValueError("require 0 <= context_size < capacity, both integers")
+        self.capacity = capacity
+        self.context_size = context_size
+        self.segments: OrderedDict[str, TranscriptUpdate] = OrderedDict()
+        self._retired_through = -1.0
+
+    def accept(self, update: TranscriptUpdate) -> ClaimContext | None:
+        old = self.segments.get(update.id)
+        if old is not None:
+            if update.revision < old.revision or update == old:
+                return None
+            if update.revision == old.revision:
+                raise ValueError("conflicting content for the same revision")
+            if update.start != old.start:
+                raise ValueError("a segment's start timestamp is its stable anchor")
+        else:
+            latest = max((s.start for s in self.segments.values()), default=-1.0)
+            if update.start <= self._retired_through or update.start < latest:
+                raise ValueError("new segments must arrive in media order within the revision window")
+        self.segments[update.id] = update
+        while len(self.segments) > self.capacity:
+            _, retired = self.segments.popitem(last=False)
+            self._retired_through = max(self._retired_through, retired.start)
+        return self.snapshot(update.id) if update.final else None
+
+    def snapshot(self, segment_id: str) -> ClaimContext:
+        claim = self.segments[segment_id]
+        preceding = [
+            s for s in self.segments.values()
+            if s.id != claim.id and s.final and s.end <= claim.start
+            and s.start < claim.start and s.speaker == claim.speaker
+        ]
+        preceding.sort(key=lambda s: (s.end, s.start, s.id))
+        chosen = preceding[-self.context_size:] if self.context_size else []
+        return ClaimContext(claim, tuple(chosen))
 
