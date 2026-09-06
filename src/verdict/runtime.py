@@ -41,6 +41,7 @@ ONNX_FILE = "onnx/verdict.onnx"
 # still several times faster than one and leaves the box usable; raise it with VERDICT_THREADS
 # on hardware that can carry it.
 DEFAULT_THREADS = 4
+DEFAULT_BATCH = 4       # DeBERTa attention grows with batch * sequence length squared.
 
 Evidence = Sequence[Sequence]
 
@@ -113,7 +114,19 @@ class VerdictRuntime:
         """Logits for one claim and the evidence it was given."""
         return self.score_batch([(claim, evidence)])[0]
 
-    def score_batch(self, pairs: Sequence[tuple[str, Evidence]]) -> list[Scored]:
+    def score_batch(
+        self, pairs: Sequence[tuple[str, Evidence]], *, batch_size: int = DEFAULT_BATCH
+    ) -> list[Scored]:
+        """Bound graph allocations independently of the caller's queue length."""
+        if isinstance(batch_size, bool) or not isinstance(batch_size, int) or batch_size < 1:
+            raise ValueError("batch_size must be a positive integer")
+        return [
+            scored
+            for start in range(0, len(pairs), batch_size)
+            for scored in self._score_chunk(pairs[start : start + batch_size])
+        ]
+
+    def _score_chunk(self, pairs: Sequence[tuple[str, Evidence]]) -> list[Scored]:
         """
         Logits for several claims at once.
 
