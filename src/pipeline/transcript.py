@@ -11,6 +11,8 @@ import math
 from collections import OrderedDict
 from dataclasses import dataclass
 
+from src.pipeline.references import LAW_REFERENCE, REFERENCE_SEGMENTS
+
 
 @dataclass(frozen=True, slots=True)
 class TranscriptUpdate:
@@ -53,20 +55,26 @@ class TranscriptUpdate:
 class ClaimContext:
     claim: TranscriptUpdate
     preceding: tuple[TranscriptUpdate, ...]
+    reference_context: tuple[TranscriptUpdate, ...] = ()
 
     @property
     def dependencies(self) -> tuple[tuple[str, int], ...]:
-        return tuple((s.id, s.revision) for s in (*self.preceding, self.claim))
+        prior = {s.id: s for s in (*self.reference_context, *self.preceding)}
+        ordered = sorted(prior.values(), key=lambda s: (s.end, s.start, s.id))
+        return tuple((s.id, s.revision) for s in (*ordered, self.claim))
 
 
 class TranscriptWindow:
     """Retain a bounded revision window; reject late new segments instead of using future text."""
 
-    def __init__(self, *, capacity: int = 64, context_size: int = 2) -> None:
+    def __init__(self, *, capacity: int = 64, context_size: int = 2, use_references: bool = False) -> None:
         if type(capacity) is not int or type(context_size) is not int or not 0 <= context_size < capacity:
             raise ValueError("require 0 <= context_size < capacity, both integers")
         self.capacity = capacity
         self.context_size = context_size
+        if type(use_references) is not bool:
+            raise ValueError("use_references must be boolean")
+        self.reference_size = min(REFERENCE_SEGMENTS, capacity - 1) if use_references else 0
         self.segments: OrderedDict[str, TranscriptUpdate] = OrderedDict()
         self._retired_through = -1.0
 
@@ -98,17 +106,26 @@ class TranscriptWindow:
         ]
         preceding.sort(key=lambda s: (s.end, s.start, s.id))
         chosen = preceding[-self.context_size:] if self.context_size else []
-        return ClaimContext(claim, tuple(chosen))
+        reference_context = preceding[-self.reference_size:] if (
+            self.reference_size and LAW_REFERENCE.search(claim.text)
+        ) else []
+        return ClaimContext(claim, tuple(chosen), tuple(reference_context))
 
     def current(self, context: ClaimContext) -> bool:
         if self.segments.get(context.claim.id) != context.claim:
             return False
-        if any(self.segments[s.id] != s for s in context.preceding if s.id in self.segments):
+        prior = (*context.preceding, *context.reference_context)
+        if any(self.segments[s.id] != s for s in prior if s.id in self.segments):
             return False
         # Retired context cannot be revised; its immutable snapshot remains valid. Forgetting it
         # would requeue old claims with less context every time the history window advances.
-        preceding = [s for s in context.preceding if s.id not in self.segments]
-        preceding.extend(self.snapshot(context.claim.id).preceding)
-        preceding.sort(key=lambda s: (s.end, s.start, s.id))
-        chosen = preceding[-self.context_size:] if self.context_size else []
-        return tuple(chosen) == context.preceding
+        fresh = self.snapshot(context.claim.id)
+        for field, size in (("preceding", self.context_size), ("reference_context", self.reference_size)):
+            saved = getattr(context, field)
+            candidates = [s for s in saved if s.id not in self.segments]
+            candidates.extend(getattr(fresh, field))
+            candidates.sort(key=lambda s: (s.end, s.start, s.id))
+            chosen = candidates[-size:] if size else []
+            if tuple(chosen) != saved:
+                return False
+        return True
