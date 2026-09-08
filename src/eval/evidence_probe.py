@@ -7,8 +7,15 @@ No sufficiency gate or FEVER confidence-band promise applies to this diagnostic.
 
 from __future__ import annotations
 
+import argparse
+import hashlib
+import json
+from datetime import date
+from pathlib import Path
+
 import numpy as np
 
+from src.calibration.scaling import from_dict
 from src.verdict.encode import build_input, pack
 from src.verdict.runtime import VerdictRuntime
 
@@ -48,3 +55,43 @@ def score_inputs(claims: dict[str, str], evidence_arms: dict[str, list],
                 "calibrated_scores": probabilities.tolist(),
             })
     return results
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("manifest", type=Path)
+    parser.add_argument("output", type=Path)
+    args = parser.parse_args()
+    manifest_bytes = args.manifest.read_bytes()
+    manifest = json.loads(manifest_bytes)
+    cutoff = date.fromisoformat(manifest["as_of"])
+    for case in manifest["cases"]:
+        for source in case["sources"]:
+            if date.fromisoformat(source["published"]) > cutoff:
+                raise ValueError(f"Future evidence: {source['url']}")
+    output = {
+        "manifest_sha256": hashlib.sha256(manifest_bytes).hexdigest(),
+        "manifest": manifest, "models": {}, "results": [],
+    }
+    for variant in ("retrieved", "claim_only"):
+        runtime = VerdictRuntime(variant)
+        if not (runtime.root / "onnx/verdict.onnx").exists():
+            output["models"][variant] = {"status": "unavailable", "reason": "Local ONNX export missing"}
+            continue
+        calibration_bytes = (runtime.root / "calibration.json").read_bytes()
+        calibrator = from_dict(json.loads(calibration_bytes)["calibrator"])
+        with (runtime.root / "onnx/verdict.onnx").open("rb") as model_file:
+            model_hash = hashlib.file_digest(model_file, "sha256").hexdigest()
+        output["models"][variant] = {
+            "onnx_sha256": model_hash,
+            "calibration_sha256": hashlib.sha256(calibration_bytes).hexdigest(),
+            "contract": json.loads((runtime.root / "contract.json").read_bytes()),
+        }
+        for case in manifest["cases"]:
+            output["results"].append({"id": case["id"], "arms": score_case(case, runtime, calibrator)})
+            print(f"Scored {variant}: {case['id']}", flush=True)
+    args.output.write_text(json.dumps(output, ensure_ascii=False, indent=2, allow_nan=False) + "\n", encoding="utf-8")
+
+
+if __name__ == "__main__":
+    main()
