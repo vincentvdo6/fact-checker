@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from datetime import date
 
 from src.pipeline.references import LAW_REFERENCE, law_mentions
+from src.pipeline.topic_query import topic_query
 from src.pipeline.transcript import ClaimContext
 
 REFERENTIAL = re.compile(r"\b(it|its|this|that|these|those|we|our|ours|they|their|he|she|his|her)\b", re.I)
@@ -54,6 +55,7 @@ class RetrievalQuery:
     mode: str
     context_ids: tuple[str, ...]
     references: tuple[ReferenceHint, ...] = ()
+    context_text: tuple[str, ...] = ()
 
 
 def _law_hint(context: ClaimContext) -> tuple[ReferenceHint, ...]:
@@ -67,11 +69,14 @@ def _law_hint(context: ClaimContext) -> tuple[ReferenceHint, ...]:
 
 
 def build_query(context: ClaimContext, metadata: SpeechMetadata, *, mode: str = "claim") -> RetrievalQuery:
-    if mode not in ("claim", "context"):
-        raise ValueError("query mode must be claim or context")
+    if mode not in ("claim", "context", "topic"):
+        raise ValueError("query mode must be claim, context or topic")
     claim = context.claim.text
     if mode == "claim":
         return RetrievalQuery(claim, claim, mode, ())
+    if mode == "topic":
+        query, ids, text = topic_query(context)
+        return RetrievalQuery(claim, query, mode, ids, context_text=text)
     hints = [metadata.country, metadata.spoken_at[:4]]
     preceding = context.preceding if REFERENTIAL.search(claim) else ()
     words = " ".join(s.text for s in preceding).split()
