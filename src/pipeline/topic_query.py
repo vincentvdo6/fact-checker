@@ -43,7 +43,10 @@ def topic_query(context: ClaimContext) -> tuple[str, tuple[str, ...], tuple[str,
     remaining = CONTEXT_WORDS
     for item in reversed(preceding):
         words = item.text.split()[-remaining:]
-        selected.append((item.id, " ".join(words)))
+        text = " ".join(words)
+        if not anchors.intersection(content_terms(text)):
+            continue
+        selected.append((item.id, text))
         remaining -= len(words)
         if remaining <= 0:
             break

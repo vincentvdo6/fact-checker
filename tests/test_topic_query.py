@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from src.pipeline.context import SpeechMetadata, build_query
 from src.pipeline.topic_query import CONTEXT_WORDS, content_terms
 from src.pipeline.transcript import ClaimContext, TranscriptUpdate
@@ -34,7 +36,7 @@ def test_caption_context_with_shared_excerpt_timings_is_ordered_by_caller():
 
 
 def test_query_budget_keeps_recent_context_and_unique_terms():
-    earlier = "labor " + " ".join(f"word{i}" for i in range(CONTEXT_WORDS * 2))
+    earlier = " ".join(f"word{i}" for i in range(CONTEXT_WORDS * 2)) + " labor"
     context = ClaimContext(update("c", "Labor labor labor shortage.", 4, 5), (update("p", earlier),))
     result = build_query(context, SpeechMetadata(), mode="topic")
     assert result.query.split().count("labor") == 1
@@ -58,3 +60,32 @@ def test_empty_content_query_falls_back_to_original_claim():
     claim = "We don't have it."
     result = build_query(ClaimContext(update("claim", claim), ()), SpeechMetadata(), mode="topic")
     assert result.claim == result.query == claim
+
+
+@pytest.mark.parametrize("claim,expected", [
+    ("Labor shortages rose.", "labor shortages rose"),
+    ("Solar capacity increased.", "solar capacity increased"),
+    ("Train delays increased.", "train delays increased"),
+])
+def test_truncated_context_must_still_contain_a_claim_anchor(claim, expected):
+    prior = claim + " " + "A singer released another album. " * 25
+    context = ClaimContext(update("claim", claim, 4, 5), (update("prior", prior),))
+    result = build_query(context, SpeechMetadata(), mode="topic")
+    assert result.query == expected
+    assert result.context_ids == result.context_text == ()
+
+
+@pytest.mark.parametrize("claim,prior,expected", [
+    ("Labor shortages rose.", "Labor demand increased.", "labor shortages rose demand increased"),
+    ("Solar capacity increased.", "Solar installations doubled.", "solar capacity increased installations doubled"),
+    ("Train delays increased.", "Train services slowed.", "train delays increased services slowed"),
+])
+def test_rejected_context_tail_does_not_displace_earlier_relevant_speech(claim, prior, expected):
+    context = ClaimContext(update("claim", claim, 4, 5), (
+        update("relevant", prior),
+        update("drifted", claim + " " + "A singer released another album. " * 25),
+    ))
+    result = build_query(context, SpeechMetadata(), mode="topic")
+    assert result.context_ids == ("relevant",)
+    assert result.context_text == (prior,)
+    assert result.query == expected
