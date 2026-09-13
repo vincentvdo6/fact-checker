@@ -1,0 +1,15 @@
+{
+  "id": "vincentvdo6/pair-judge-train-v4-onnx",
+  "title": "pair judge train v4 onnx",
+  "code_file": "kaggle_export_onnx.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": false,
+  "enable_internet": true,
+  "dataset_sources": [],
+  "competition_sources": [],
+  "kernel_sources": [
+    "vincentvdo6/pair-judge-train-v4"
+  ]
+}

@@ -1,0 +1,493 @@
+{
+ "labeller": "automated first pass by a language model; single annotator, not a person. The count batch's values are the ones its claims were written under (0-69 believed true, 70-116 altered or negated), the probe batch's are the annotator's belief; written 2026-09-14 after the clicks, by an annotator who had already seen which claims received a direction, so the file fixes the truth values, not their independence from the run",
+ "written": "2026-09-14",
+ "batches": {
+  "probe": "runs/live-click/probe_claims.py / probe_batch.py, 36 claims clicked 2026-09-12",
+  "count": "runs/live-click/count_claims.json, 117 claims clicked 2026-09-13 (indices 0-69 written as believed true, 70-116 altered or negated)"
+ },
+ "claims": {
+  "The unemployment rate in the United States was below 5 percent in 2024.": {
+   "true": true
+  },
+  "Violent crime in the United States rose in 2024.": {
+   "true": false,
+   "note": "fell"
+  },
+  "The average price of a gallon of gas in the United States was above 4 dollars in 2024.": {
+   "true": false,
+   "note": "annual average near $3.30"
+  },
+  "Life expectancy in the United States is lower than in Canada.": {
+   "true": true
+  },
+  "The United States spends more on health care per person than any other country.": {
+   "true": true
+  },
+  "The federal minimum wage is 7 dollars and 25 cents an hour.": {
+   "true": true
+  },
+  "Home prices in the United States fell in 2024.": {
+   "true": false,
+   "note": "rose"
+  },
+  "The national debt of the United States passed 35 trillion dollars in 2024.": {
+   "true": true,
+   "note": "July 2024"
+  },
+  "Electric vehicles made up more than a quarter of new car sales in the United States in 2024.": {
+   "true": false,
+   "note": "battery-electric share near a tenth"
+  },
+  "The United States produces more oil than any other country.": {
+   "true": true
+  },
+  "Wildfires burned more than a million acres in California in 2024.": {
+   "true": true
+  },
+  "Measles cases in the United States in 2025 were the highest in more than 30 years.": {
+   "true": true,
+   "note": "highest since 1992"
+  },
+  "Britain's inflation rate fell below 2 percent in 2024.": {
+   "true": true,
+   "note": "1.7% in September 2024"
+  },
+  "Canada's unemployment rate was above 6 percent in 2024.": {
+   "true": true
+  },
+  "Germany's economy shrank in 2024.": {
+   "true": true,
+   "note": "-0.2%"
+  },
+  "France has the highest birth rate in the European Union.": {
+   "true": null,
+   "note": "contested: Bulgaria's fertility rate was higher in the latest Eurostat year"
+  },
+  "Japan's population fell in 2024.": {
+   "true": true
+  },
+  "Australia's unemployment rate was above 8 percent in 2024.": {
+   "true": false,
+   "note": "near 4%"
+  },
+  "India is the world's most populous country.": {
+   "true": true
+  },
+  "Brazil's economy grew by more than 3 percent in 2024.": {
+   "true": true,
+   "note": "3.4%"
+  },
+  "Mexico is the largest trading partner of the United States.": {
+   "true": true
+  },
+  "The United States imports most of its steel from China.": {
+   "true": false,
+   "note": "Canada, Brazil and Mexico lead"
+  },
+  "More than 40 million Americans receive food stamps.": {
+   "true": true
+  },
+  "The murder rate in the United States fell in 2024.": {
+   "true": true
+  },
+  "Fentanyl overdose deaths in the United States fell in 2024.": {
+   "true": true
+  },
+  "Tuition at public universities in the United States has doubled since 2000.": {
+   "true": null,
+   "note": "borderline: depends on nominal or real terms"
+  },
+  "Unemployment among Black Americans is twice the rate for white Americans.": {
+   "true": true,
+   "note": "ratio near 2 in most months"
+  },
+  "The United States has the highest incarceration rate in the world.": {
+   "true": null,
+   "note": "contested: highest among independent democracies; El Salvador higher"
+  },
+  "Women earn 82 cents for every dollar men earn in the United States.": {
+   "true": true,
+   "note": "published figures range 81 to 85 cents by source and year"
+  },
+  "Chicago had more murders than New York City in 2024.": {
+   "true": true
+  },
+  "There is no housing shortage in the United States.": {
+   "true": false
+  },
+  "The United States does not have a trade deficit with Canada.": {
+   "true": false
+  },
+  "Nearly 30 percent of American adults are obese.": {
+   "true": false,
+   "note": "CDC measured prevalence near 40%"
+  },
+  "About one in five American children live in poverty.": {
+   "true": null,
+   "note": "borderline: official measure near 16%, supplemental near 14%"
+  },
+  "The United Kingdom has more than 70 million people.": {
+   "true": false,
+   "note": "about 69 million in 2024"
+  },
+  "Canada admitted more than 400,000 immigrants in 2024.": {
+   "true": true
+  },
+  "Donald Trump was inaugurated as the 47th president of the United States in January 2025.": {
+   "true": true
+  },
+  "Pope Francis died in April 2025.": {
+   "true": true
+  },
+  "Cardinal Robert Prevost was elected pope in May 2025 and took the name Leo XIV.": {
+   "true": true
+  },
+  "Nvidia became the first company to reach a market value of 4 trillion dollars in 2025.": {
+   "true": true
+  },
+  "The Los Angeles Dodgers won the 2025 World Series.": {
+   "true": true
+  },
+  "The Philadelphia Eagles won Super Bowl LIX in February 2025.": {
+   "true": true
+  },
+  "Zohran Mamdani won the New York City mayoral election in November 2025.": {
+   "true": true
+  },
+  "Canada's Liberal Party won the federal election in April 2025.": {
+   "true": true
+  },
+  "Mark Carney became prime minister of Canada in March 2025.": {
+   "true": true
+  },
+  "Friedrich Merz became chancellor of Germany in May 2025.": {
+   "true": true
+  },
+  "Australia's Labor Party won the federal election in May 2025.": {
+   "true": true
+  },
+  "Lee Jae-myung was elected president of South Korea in June 2025.": {
+   "true": true
+  },
+  "Japan's ruling coalition lost its majority in the upper house election in July 2025.": {
+   "true": true
+  },
+  "Sanae Takaichi became Japan's first female prime minister in October 2025.": {
+   "true": true
+  },
+  "The United States imposed a 10 percent baseline tariff on imports in April 2025.": {
+   "true": true
+  },
+  "The US Supreme Court struck down the tariffs imposed under the International Emergency Economic Powers Act.": {
+   "true": null,
+   "note": "annotator not certain of the decision's date relative to the click"
+  },
+  "A ceasefire between Israel and Hamas took effect in October 2025.": {
+   "true": true
+  },
+  "Israel and Iran fought a 12-day war in June 2025.": {
+   "true": true
+  },
+  "The United States struck Iranian nuclear sites in June 2025.": {
+   "true": true
+  },
+  "Bashar al-Assad was ousted as president of Syria in December 2024.": {
+   "true": true
+  },
+  "Ahmed al-Sharaa became president of Syria in 2025.": {
+   "true": true
+  },
+  "Hurricane Melissa struck Jamaica as a Category 5 storm in October 2025.": {
+   "true": true
+  },
+  "A magnitude 7.7 earthquake struck Myanmar in March 2025.": {
+   "true": true
+  },
+  "An Air India Boeing 787 crashed in Ahmedabad in June 2025, killing more than 200 people.": {
+   "true": true
+  },
+  "A passenger plane collided with an Army helicopter near Washington's Reagan National Airport in January 2025, killing 67 people.": {
+   "true": true
+  },
+  "The Texas Hill Country floods in July 2025 killed more than 100 people.": {
+   "true": true
+  },
+  "Charlie Kirk was shot and killed in Utah in September 2025.": {
+   "true": true
+  },
+  "Bitcoin passed 100,000 dollars for the first time in December 2024.": {
+   "true": true
+  },
+  "Bitcoin passed 120,000 dollars in 2025.": {
+   "true": true
+  },
+  "Gold passed 4,000 dollars an ounce in 2025.": {
+   "true": true
+  },
+  "The 2025 US government shutdown was the longest in history.": {
+   "true": true
+  },
+  "The 2025 US government shutdown lasted 43 days.": {
+   "true": true
+  },
+  "Elon Musk left his role in the Trump administration in May 2025.": {
+   "true": true
+  },
+  "OpenAI released GPT-5 in August 2025.": {
+   "true": true
+  },
+  "Apple's iPhone 17 went on sale in September 2025.": {
+   "true": true
+  },
+  "Microsoft shut down Skype in May 2025.": {
+   "true": true
+  },
+  "Nintendo released the Switch 2 in June 2025.": {
+   "true": true
+  },
+  "The Oklahoma City Thunder won the 2025 NBA championship.": {
+   "true": true
+  },
+  "The Florida Panthers won the Stanley Cup in 2025.": {
+   "true": true
+  },
+  "Paris Saint-Germain won the Champions League in 2025.": {
+   "true": true
+  },
+  "Chelsea won the 2025 FIFA Club World Cup.": {
+   "true": true
+  },
+  "Jannik Sinner won Wimbledon in 2025.": {
+   "true": true
+  },
+  "Rory McIlroy won the Masters in 2025.": {
+   "true": true
+  },
+  "Lando Norris won the 2025 Formula One world championship.": {
+   "true": true
+  },
+  "Liverpool won the Premier League in the 2024-25 season.": {
+   "true": true
+  },
+  "Ozzy Osbourne died in July 2025.": {
+   "true": true
+  },
+  "Robert Redford died in September 2025.": {
+   "true": true
+  },
+  "The 2025 Nobel Peace Prize was awarded to Maria Corina Machado.": {
+   "true": true
+  },
+  "The United States withdrew from the World Health Organization.": {
+   "true": true,
+   "note": "announced January 2025, effective January 2026; formal status disputed at the WHA"
+  },
+  "The measles outbreak in Texas in 2025 killed two children.": {
+   "true": true
+  },
+  "Australia's ban on social media for children under 16 took effect in December 2025.": {
+   "true": true
+  },
+  "The United Kingdom and the United States announced a trade deal in May 2025.": {
+   "true": true
+  },
+  "Javier Milei's party won Argentina's midterm elections in October 2025.": {
+   "true": true
+  },
+  "Rodrigo Paz was elected president of Bolivia in 2025.": {
+   "true": true
+  },
+  "Jose Antonio Kast was elected president of Chile in December 2025.": {
+   "true": true
+  },
+  "Karol Nawrocki was elected president of Poland in June 2025.": {
+   "true": true
+  },
+  "Nicusor Dan was elected president of Romania in May 2025.": {
+   "true": true
+  },
+  "Nepal's prime minister resigned after youth protests in September 2025.": {
+   "true": true
+  },
+  "Sheikh Hasina was sentenced to death by a Bangladesh tribunal in November 2025.": {
+   "true": true
+  },
+  "Thieves stole crown jewels from the Louvre in October 2025.": {
+   "true": true
+  },
+  "The jewels stolen from the Louvre in October 2025 were worth about 88 million euros.": {
+   "true": true
+  },
+  "Spain and Portugal suffered a nationwide blackout in April 2025.": {
+   "true": true
+  },
+  "India and Pakistan fought a four-day military conflict in May 2025.": {
+   "true": true
+  },
+  "Thailand and Cambodia fought border clashes in July 2025.": {
+   "true": true
+  },
+  "China's exports to the United States fell in 2025.": {
+   "true": true
+  },
+  "2025 was among the three warmest years on record.": {
+   "true": true
+  },
+  "Meta bought a 49 percent stake in Scale AI in 2025.": {
+   "true": true
+  },
+  "Nvidia agreed to invest up to 100 billion dollars in OpenAI.": {
+   "true": true
+  },
+  "UnitedHealthcare chief executive Brian Thompson was shot dead in New York in December 2024.": {
+   "true": true
+  },
+  "Sean Combs was acquitted of sex trafficking charges in 2025.": {
+   "true": true,
+   "note": "acquitted of sex trafficking and racketeering; convicted on two prostitution-transportation counts"
+  },
+  "Pope Francis died in 2023.": {
+   "true": false
+  },
+  "Kamala Harris was inaugurated as president of the United States in January 2025.": {
+   "true": false
+  },
+  "The Kansas City Chiefs won Super Bowl LIX.": {
+   "true": false
+  },
+  "The New York Yankees won the 2025 World Series.": {
+   "true": false
+  },
+  "The Indiana Pacers won the 2025 NBA championship.": {
+   "true": false
+  },
+  "The Edmonton Oilers won the Stanley Cup in 2025.": {
+   "true": false
+  },
+  "Inter Milan won the 2025 Champions League.": {
+   "true": false
+  },
+  "Carlos Alcaraz won Wimbledon in 2025.": {
+   "true": false
+  },
+  "Arsenal won the Premier League in the 2024-25 season.": {
+   "true": false
+  },
+  "Max Verstappen won the 2025 Formula One world championship.": {
+   "true": false
+  },
+  "Nvidia's market value fell below 1 trillion dollars in 2025.": {
+   "true": false
+  },
+  "Bitcoin fell below 20,000 dollars in 2025.": {
+   "true": false
+  },
+  "Gold fell below 2,000 dollars an ounce in 2025.": {
+   "true": false
+  },
+  "The Bank of England raised interest rates in 2025.": {
+   "true": false
+  },
+  "The European Central Bank raised interest rates in 2025.": {
+   "true": false
+  },
+  "Mark Carney lost the 2025 Canadian federal election.": {
+   "true": false
+  },
+  "Olaf Scholz was re-elected chancellor of Germany in 2025.": {
+   "true": false
+  },
+  "Peter Dutton became prime minister of Australia in 2025.": {
+   "true": false
+  },
+  "Yoon Suk-yeol remained president of South Korea through 2025.": {
+   "true": false
+  },
+  "Andrew Cuomo won the New York City mayoral election in 2025.": {
+   "true": false
+  },
+  "The 2025 US government shutdown lasted less than a week.": {
+   "true": false
+  },
+  "The Air India crash in June 2025 killed fewer than 50 people.": {
+   "true": false
+  },
+  "The Texas floods in July 2025 killed fewer than 20 people.": {
+   "true": false
+  },
+  "Hurricane Melissa made landfall in Jamaica as a tropical storm.": {
+   "true": false
+  },
+  "The earthquake that struck Myanmar in March 2025 had a magnitude below 6.": {
+   "true": false
+  },
+  "OpenAI has not released GPT-5.": {
+   "true": false
+  },
+  "Nintendo has not released a successor to the Switch.": {
+   "true": false
+  },
+  "The United States did not strike Iran in 2025.": {
+   "true": false
+  },
+  "Israel and Hamas did not agree to a ceasefire in 2025.": {
+   "true": false
+  },
+  "Bashar al-Assad is still the president of Syria.": {
+   "true": false
+  },
+  "The Louvre has never been robbed.": {
+   "true": false
+  },
+  "Spain did not have a blackout in 2025.": {
+   "true": false
+  },
+  "Charlie Kirk survived the shooting in Utah in September 2025.": {
+   "true": false
+  },
+  "Ozzy Osbourne is still alive.": {
+   "true": false
+  },
+  "The 2025 Nobel Peace Prize was awarded to Donald Trump.": {
+   "true": false
+  },
+  "Australia's social media ban applies to children under 13.": {
+   "true": null,
+   "note": "written as the altered age (the law says under 16); literally, under-13s are also covered"
+  },
+  "Sheikh Hasina was acquitted by the Bangladesh tribunal.": {
+   "true": false
+  },
+  "Karol Nawrocki lost the 2025 Polish presidential election.": {
+   "true": false
+  },
+  "Argentina's ruling party lost the October 2025 midterm elections.": {
+   "true": false
+  },
+  "Sean Combs was convicted of sex trafficking in 2025.": {
+   "true": false,
+   "note": "convicted on prostitution-transportation counts, not sex trafficking"
+  },
+  "Meta acquired Scale AI outright in 2025.": {
+   "true": false
+  },
+  "The United States rejoined the World Health Organization in 2025.": {
+   "true": false
+  },
+  "The measles outbreak in Texas in 2025 caused no deaths.": {
+   "true": false
+  },
+  "The 2025 Myanmar earthquake killed fewer than 100 people.": {
+   "true": false
+  },
+  "Paris Saint-Germain lost the 2025 Champions League final.": {
+   "true": false
+  },
+  "Rory McIlroy has never won the Masters.": {
+   "true": false
+  },
+  "Jannik Sinner was banned from tennis for the whole of 2025.": {
+   "true": false
+  }
+ }
+}

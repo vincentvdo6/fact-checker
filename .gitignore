@@ -33,6 +33,8 @@ nul
 
 # Datasets and derived corpora (fetched via scripts/)
 /data/
+/labels/pairs-*.json
+/labels/roles-*.json
 
 # Model weights and trained artifacts
 /models/
