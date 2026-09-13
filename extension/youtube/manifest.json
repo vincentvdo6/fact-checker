@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "Fact checker for YouTube",
+  "version": "0.1.0",
+  "description": "Check recent YouTube captions against evidence on your computer.",
+  "permissions": [
+    "scripting",
+    "nativeMessaging",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://www.youtube.com/*"
+  ],
+  "action": {
+    "default_title": "Check what I just heard on YouTube"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.youtube.com/*"
+      ],
+      "js": [
+        "panel.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA133cgVuF2bdzCTUbNSDgg3CRwYwuOKwJLlXtzChXk3slEYf6cmXg++Au7e3Y1DqUxyKJ6ZX2zdZsiRNJUb5s/i7nfi57NYsveRR9HMSB8xNdHRmdbVoWXc+MIab4NJScHoD3ND1aLI0f7qshjmyCjQuiDlGnsn32fEtKpUNsnLMDxby/gZiFAkR3Rc3FctDtEANUycytp2eCBoA4SLK70WkyEoCb60gXhZm9Mx0zhGQb59RNxN/6bHml+xZM1JCSYOYKUAbKBaipXlFf5+TNwC+6WURhZNd0ki00iZmliThq8LHcmSIzwGkBzPfv0T/YpZTfc2Iarq4Fk3q4yIQxTQIDAQAB"
+}

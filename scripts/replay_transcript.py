@@ -1,7 +1,7 @@
 """Emit saved speech as paced final ASR segments, with explicitly simulated timestamps.
 
-Pipe stdout into scripts.verify_stream. --speed 1 simulates the requested speaking rate;
---speed 0 emits a burst for an overload test. Neither mode measures real ASR latency.
+The JSONL output is a replay fixture. --speed 1 simulates the requested speaking rate;
+--speed 0 emits a burst. Neither mode measures real ASR latency.
 """
 
 from __future__ import annotations
