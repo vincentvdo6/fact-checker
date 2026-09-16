@@ -212,10 +212,17 @@ def test_a_count_on_a_caption_concept_sentence_is_shown_never_counted():
     assert counted["assertions"][0]["status"] == "supported" and counted["assertions"][0]["evidence"][0]["origin"] == "assertion"
 
 
-def test_a_bearing_sentence_giving_the_claims_figure_confirms_the_figure_not_the_claim():
-    basis = [{"id": "assertion-1", "text": "That's around 25% of the population.", "negated": False, "contrast": False}]
-    figure = unit("s1:p3:u1", "s1", "The true rate of unemployment in April was 24.3%, up 0.03% from the previous month.")
-    other = unit("s2:p3:u1", "s2", "The rate for Black workers rose to 26.7%.")
+@pytest.mark.parametrize("claim,sentence", [
+    ("That's around 25% of the population.", "Formerly incarcerated individuals are 24% less likely to return to prison."),
+    ("Around 25% of households lack electricity.", "Electricity prices rose 24% during the same year."),
+    ("The median salary is $50,000.", "The vehicle costs $50,000 before taxes."),
+    ("Reservoirs supply 20 million residents.", "The reservoir stores 20 million cubic metres."),
+    ("Around 25% of adults are unemployed.", "The unemployment rate for teenagers was 24.3%."),
+])
+def test_numeric_similarity_neither_confirms_a_measure_nor_promotes_a_bearing_sentence(claim, sentence):
+    basis = [{"id": "assertion-1", "text": claim, "negated": False, "contrast": False}]
+    figure = unit("s1:p3:u1", "s1", sentence)
+    other = unit("s2:p3:u1", "s2", "The survey describes the claim's measure and its population.")
     both = gate(*GATE["units"], figure, other)
     rows = [judgment("assertion-1", "s2:p3:u1", "bears_on") | {"confidence": 0.95},
             judgment("assertion-1", "s1:p3:u1", "bears_on") | {"confidence": 0.60},
@@ -223,13 +230,11 @@ def test_a_bearing_sentence_giving_the_claims_figure_confirms_the_figure_not_the
     verdict = compose(basis, both, rows, SOURCES)
     result = verdict["assertions"][0]
     assert result["status"] == "insufficient" and result["evidence"] == [], "a figure match never counts"
-    assert [row["unit_id"] for row in result["relevant"]] == ["s1:p3:u1", "s2:p3:u1"], "the figure-giving sentence leads"
-    assert result["relevant"][0]["figures"] == [{"claimed": "around 25%", "relation": "near", "read_as": "24.3%"}]
-    assert "figures" not in result["relevant"][1]
-    assert result["figures_confirmed"] == [{"claimed": "around 25%", "read_as": "24.3%", "relation": "near", "unit_id": "s1:p3:u1",
-                                            "source_id": "s1", "url": "https://a.example/x", "independent_source": "a.example",
-                                            "origin": "assertion"}]
-    assert any("confirms the figure, not the claim" in rule for rule in verdict["rules"])
+    assert [row["unit_id"] for row in result["relevant"]] == ["s2:p3:u1", "s1:p3:u1"], "matching digits do not boost relevance"
+    assert result["relevant"][1]["text"] == sentence
+    assert all("figures" not in row for row in result["relevant"])
+    assert not result.get("figures_confirmed")
+    assert not any("confirms the figure" in rule for rule in verdict["rules"])
 
 
 def test_a_declared_country_lifts_the_limit_and_is_noted_with_its_basis():

@@ -72,10 +72,6 @@ def _row(row: dict) -> list[str]:
     direction = f" [{READ_AS[row['relation']]}]" if row["relation"] in READ_AS else ""
     lines = [f"  - {_publisher(row['url'])}{where}{direction}: \"{display_text(row['text'])}\"{scope}"]
     lines.extend(f"    Definition in the same paragraph: \"{display_text(item['text'])}\"" for item in row["definitions"])
-    if row.get("figures"):
-        lines.append("    Gives the claim's figure: " + "; ".join(f"{item['read_as']} fits \"{item['claimed']}\""
-                                                             if item["relation"] != "exact" else f"{item['read_as']} as claimed"
-                                                             for item in row["figures"]) + ".")
     if row.get("period"):
         lines.append(f"    Dated to {', '.join(row['period'])}, outside the claim's stated period; shown, not counted.")
     if row.get("origin") == "context":
@@ -83,27 +79,6 @@ def _row(row: dict) -> list[str]:
     elif row.get("not_counted") and not row.get("period"):
         lines.append(f"    Shown, not counted: {row['not_counted']}.")
     return lines
-
-
-def _figures_line(row: dict, visible: set[str]) -> str | None:
-    """The claim's figures found in bearing sentences quoted under this assertion, by the sentence's own
-    publisher: the number checked, the claim not stated. A figure from a sentence the page does not
-    show is not cited."""
-    found: dict[str, tuple[list[str], list[str]]] = {}
-    for item in row.get("figures_confirmed", []):
-        if item["unit_id"] not in visible:
-            continue
-        readings, publishers = found.setdefault(f"{item['claimed']}|{item['relation']}", ([], []))
-        readings.append(item["read_as"])
-        publishers.append(_publisher(item["url"]))
-    if not found:
-        return None
-    parts = []
-    for key, (readings, publishers) in found.items():
-        claimed, relation = key.split("|")
-        given, who = " and ".join(dict.fromkeys(readings)), " and ".join(dict.fromkeys(publishers))
-        parts.append(f"\"{claimed}\" is given as {given} by {who}" if relation != "exact" else f"{claimed} is given by {who}")
-    return "  Its figure checks: " + "; ".join(parts) + " -- in sentences that bear on the claim without stating it."
 
 
 def render(verdict: dict, claim: str) -> str:
@@ -129,8 +104,6 @@ def render(verdict: dict, claim: str) -> str:
             lines.append("  Counted:")
             for item in row["evidence"]:
                 lines.extend(_row(item))
-        elif figures := _figures_line(row, {item["unit_id"] for item in fresh}):
-            lines.append(figures)
         if fresh:
             lines.append("  Relevant, not counted:")
             for item in fresh:

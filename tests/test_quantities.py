@@ -41,16 +41,3 @@ def test_every_hedged_figure_is_read_against_the_nearest_fit_and_unmatched_ones_
     both = hedged_form(claim, "Those earning under $25,000 a year were 24.3% of the labor force.")
     assert both[0] == "People who make around $25,000 a year: that's around 24.3% of the population."
     assert [item["claimed"] for item in both[1]] == ["$25,000", "25%"]
-
-
-def test_figure_matches_read_hedged_figures_by_relation_and_exact_ones_exactly():
-    from src.verdict.quantities import figure_matches
-
-    claim = "People who make around $25,000 a year: that's around 25% of the population, against an official 4.2%."
-    sentence = "TRU increased from 24% to 24.3%, while the official BLS rate remained unchanged at 4.2%."
-    assert figure_matches(claim, sentence) == [{"claimed": "around 25%", "relation": "near", "read_as": "24.3%"},
-                                               {"claimed": "4.2%", "relation": "exact", "read_as": "4.2%"}]
-    assert figure_matches("The official rate was 4.2%.", "The rate was 4.3%.") == [], "an unhedged figure matches only itself"
-    assert figure_matches("We don't have a labor shortage.", sentence) == []
-    assert figure_matches("Openings hit 7.2 million in 2025.", "Openings were 7.2 million in June 2025.") == [
-        {"claimed": "7.2 million", "relation": "exact", "read_as": "7.2 million"}]

@@ -109,9 +109,8 @@ pointed the right way 47 times -- a number decided on those same clicks, so the 
 batch of recorded clicks is its test. The page shows the
 counted sentences and the strongest bearing ones verbatim with any definition from
 the same paragraph; nothing is paraphrased and no figure appears that is not in a
-quoted sentence. When nothing counts but a bearing sentence gives a figure the claim
-states -- "around 25%" against a published 24.3% -- the card says so as a number check,
-by the sentence's own publisher, and says that the sentence does not state the claim.
+quoted sentence. Similar numbers are not labelled as confirming a claim's figure:
+arithmetic alone cannot establish that they measure the same population, outcome or period.
 Pages found by caption-concept research (phrases from the captions,
 such as the name of a measure the speaker cites) are shown as context and marked;
 they never resolve the claim. A context page must also share a nonnumeric claim term
@@ -201,28 +200,13 @@ The primary manual case is [this video at 52:53](https://www.youtube.com/watch?v
 "We don't have a labor shortage, we have a good job shortage."
 The captured English-caption fixture is `tests/youtube_labor_case.json`; caption
 punctuation separates the two clauses with a period. Check that they stay in one
-card and that the evidence discusses the labor market rather than song titles. With
-the sentence-level reading on and nothing declared, expect the speaker's "around 25% of the
-population" sentence checked beside the contrast with its figure confirmed against LISEP's
-24.3% by prnewswire.com and finance.yahoo.com, **Not established** for both halves, the
-Wisconsin labor-shortage report and LISEP's functional-unemployment figures with
-their definitions quoted as bearing, the LISEP chair's quotes and a congressman's
-remarks read as opinion, and no counted sentence. With **Claims are about** set to United
-States, the outcome depends on what Google News returns that hour: when RBC's, SHRM's or
-the Chamber's labor-shortage pages are among the results, expect **Partially
-contradicted (reading)** on the badge and, on the card, "Partially contradicted" -- the
-denial half "contradicted (one source: rbc.com (published 2025-07-09))" or the SHRM
-equivalent, each counted sentence marked "[read as denying it]" with its publisher and
-date, the Chamber's "Several states ..." sentence carrying its scope, any page the judge
-read both ways shown with "Shown, not counted: ... a misreading, not a dispute", and the
-reliability line ("When this reading pointed a direction on 153 unseen claims ... it
-pointed the right way 47 of 47 times") above them; the good-job half stays not
-established with LISEP quoted and the speaker's "around 25%" confirmed as a number
-check. That is what the sources say: mainstream labor-market reporting states a labor
-shortage in 2025, the speaker's figure is LISEP's published figure, and the
-characterisation built on it is stated nowhere. When none of those pages is returned,
-both halves stay **Not established**. Either is the reading of the sources actually found. A
-three-claim click takes about 40 seconds, most of it research.
+card and that the evidence discusses the labor market rather than song titles.
+Do not require a predetermined verdict: sources and their availability change.
+The neighboring "around 25%" claim must not be labelled confirmed merely because a
+source contains 24% or 24.3%. The measure, population and period may differ.
+Context-only pages must connect to the original claim, not merely repeat an incidental
+caption phrase such as "people together". Neither that lexical connection nor a quoted
+number establishes the claim. Check the quoted evidence and each assertion's limitations.
 `runs/live-click/click.py` runs
 this click through the same host call the extension makes and records the timing.
 This is a development case, not an independent accuracy benchmark or a truth label.

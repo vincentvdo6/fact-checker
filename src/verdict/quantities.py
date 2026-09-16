@@ -103,22 +103,3 @@ def hedged_form(claim: str, sentence: str) -> tuple[str, list[dict]] | None:
     for item in sorted(substitutions, key=lambda item: -item["start"]):
         form = form[:item["start"]] + item["read_as"] + form[item["end"]:]
     return form, [{key: item[key] for key in ("hedge", "relation", "claimed", "read_as")} for item in substitutions]
-
-
-def figure_matches(claim: str, sentence: str) -> list[dict]:
-    """Every figure in the claim that the sentence gives: a hedged figure by its hedge's relation, an
-    unhedged one only exactly. Arithmetic on figures of one kind, saying nothing about whether the
-    sentence measures what the claim describes."""
-    given = _figures(sentence)
-    hedged = {item["start"]: item for item in hedged_quantities(claim)}
-    matches = []
-    for figure in _figures(claim):
-        hedge = hedged.get(figure["start"])
-        relation = hedge["relation"] if hedge else "exact"
-        fitting = [other for other in given if other["kind"] == figure["kind"]
-                   and (_fits(relation, figure["value"], other["value"]) if hedge else other["value"] == figure["value"])]
-        if fitting:
-            nearest = min(fitting, key=lambda other: abs(other["value"] - figure["value"]))
-            matches.append({"claimed": (hedge["hedge"] + " " if hedge else "") + figure["text"], "relation": relation,
-                            "read_as": nearest["text"]})
-    return matches

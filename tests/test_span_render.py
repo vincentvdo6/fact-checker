@@ -122,32 +122,18 @@ def test_a_sentence_quoted_under_one_half_is_counted_not_requoted_under_the_next
     assert single.count("Relevant, not counted:") == 1, "no empty heading under the half whose sentences were all shown above"
 
 
-def test_a_confirmed_figure_is_stated_as_a_number_check_never_as_support():
-    row = evidence("bears_on", "The true rate of unemployment in April was 24.3%.") | {
-        "figures": [{"claimed": "around 25%", "relation": "near", "read_as": "24.3%"}]}
+def test_legacy_arithmetic_annotations_cannot_be_rendered_as_confirmation():
+    row = evidence("bears_on", "Formerly incarcerated individuals are 24% less likely to return to prison.") | {
+        "figures": [{"claimed": "around 25%", "relation": "near", "read_as": "24%"}]}
     basis = verdict()["assertions"][1] | {"text": "That's around 25% of the population.", "relevant": [row],
-                                         "figures_confirmed": [{"claimed": "around 25%", "read_as": "24.3%", "relation": "near",
+                                         "figures_confirmed": [{"claimed": "around 25%", "read_as": "24%", "relation": "near",
                                                                 "unit_id": row["unit_id"], "source_id": "s1", "url": "https://www.example.org/report",
-                                                                "independent_source": "example.org", "origin": "assertion"},
-                                                               {"claimed": "around 25%", "read_as": "24%", "relation": "near",
-                                                                "unit_id": "s2:p1:u1", "source_id": "s2", "url": "https://news.example/x",
                                                                 "independent_source": "example.org", "origin": "assertion"}]}
     spoken = "If you count all of those people together, that's around 25% of the population."
     text = render(verdict(assertions=[basis]), spoken)
     assert "\"That's around 25% of the population.\" is not established by the sources." in text
-    assert ("  Its figure checks: \"around 25%\" is given as 24.3% by example.org"
-            " -- in sentences that bear on the claim without stating it.") in text, "the sentence's own publisher, not the lineage key"
-    assert "24% by" not in text, "a figure from a sentence the page does not quote is not cited"
-    second = evidence("bears_on", "The rate has stayed at 24% or higher since February.") | {
-        "figures": [{"claimed": "around 25%", "relation": "near", "read_as": "24%"}]}
-    basis["figures_confirmed"][1]["unit_id"], basis["figures_confirmed"][1]["url"] = second["unit_id"], "https://news.example/x"
-    both = render(verdict(assertions=[basis | {"relevant": [row, second]}]), spoken)
-    assert "\"around 25%\" is given as 24.3% and 24% by example.org and news.example" in both
-    assert "    Gives the claim's figure: 24.3% fits \"around 25%\"." in text
-    exact = render(verdict(assertions=[basis | {"figures_confirmed": [basis["figures_confirmed"][0] | {"relation": "exact", "claimed": "24.3%"}],
-                                               "relevant": [row | {"figures": [{"claimed": "24.3%", "relation": "exact", "read_as": "24.3%"}]}]}]), spoken)
-    assert "Its figure checks: 24.3% is given by example.org" in exact and "24.3% as claimed" in exact
-    assert "Its figure checks" not in render(verdict(), CLAIM)
+    assert row["text"] in text and "example.org (published 2025-05-15)" in text
+    assert "Its figure checks" not in text and "Gives the claim's figure" not in text
 
 
 def test_scope_notes_are_rendered_beside_the_limits():

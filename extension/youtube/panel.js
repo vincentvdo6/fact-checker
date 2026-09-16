@@ -550,9 +550,6 @@
       entry.append(node("p", `Scope stated in the sentence: ${row.qualifiers.join("; ")}.`, "reason"));
     for (const definition of row.definitions || [])
       entry.append(node("p", `Definition in the same paragraph: “${displayText(definition.text)}”`, "reason"));
-    if (row.figures?.length)
-      entry.append(node("p", "Gives the claim’s figure: " + row.figures.map(item =>
-        item.relation !== "exact" ? `${item.read_as} fits “${item.claimed}”` : `${item.read_as} as claimed`).join("; ") + ".", "reason"));
     if (row.period?.length)
       entry.append(node("p", `Dated to ${row.period.join(", ")}, outside the claim's stated period; shown, not counted.`, "reason"));
     if (row.origin === "context")
@@ -582,28 +579,9 @@
       const basis = assertion.basis ? ` (${assertion.basis})` : "";
       card.append(node("p", `“${assertion.text}” is ${DRAFT_STATUS[assertion.status] || assertion.status}${basis}${limits}.`));
       const fresh = (assertion.relevant || []).filter(row => !shown.has(row.unit_id)).slice(0, MAX_RELEVANT);
-      const visible = new Set(fresh.map(row => row.unit_id));
       if (assertion.evidence?.length) {
         card.append(node("p", "Counted:", "reason"));
         for (const row of assertion.evidence) { card.append(draftRow(row)); shown.add(row.unit_id); }
-      }
-      // A figure is cited only from a sentence this card quotes under this assertion.
-      const confirmed = (assertion.figures_confirmed || []).filter(item => visible.has(item.unit_id));
-      if (confirmed.length && !assertion.evidence?.length) {
-        const found = new Map();
-        for (const item of confirmed) {
-          const key = `${item.claimed}|${item.relation}`;
-          if (!found.has(key)) found.set(key, {readings: [], publishers: []});
-          const entry = found.get(key), who = publisher(item.url);
-          if (!entry.readings.includes(item.read_as)) entry.readings.push(item.read_as);
-          if (!entry.publishers.includes(who)) entry.publishers.push(who);
-        }
-        const parts = [...found.entries()].map(([key, {readings, publishers}]) => {
-          const [claimed, relation] = key.split("|");
-          return relation !== "exact" ? `“${claimed}” is given as ${readings.join(" and ")} by ${publishers.join(" and ")}`
-                                      : `${claimed} is given by ${publishers.join(" and ")}`;
-        });
-        card.append(node("p", `Its figure checks: ${parts.join("; ")} — in sentences that bear on the claim without stating it.`));
       }
       if (fresh.length) card.append(node("p", "Relevant, not counted:", "reason"));
       if (assertion.relevant?.length) {

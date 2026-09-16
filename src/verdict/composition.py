@@ -28,7 +28,6 @@ from __future__ import annotations
 
 from urllib.parse import urlsplit
 
-from src.verdict.quantities import figure_matches
 from src.verdict.scope import different_period
 
 RELATIONSHIPS = ("supported", "contradicted", "qualified", "insufficient")
@@ -74,8 +73,6 @@ def _evidence_row(judgment: dict, unit: dict, source: dict, independent: str, as
         # A sentence dated wholly outside the claim's stated period can bear on it, never state or deny it.
         row["period"] = dated
         row["relation"], row["not_counted"] = "bears_on", f"{judgment['relation']}: states a different period ({', '.join(dated)})"
-    if row["relation"] != "unrelated" and (figures := figure_matches(assertion["text"], unit["text"])):
-        row["figures"] = figures        # the sentence gives the claim's figure; arithmetic, not a relation
     return row
 
 
@@ -235,15 +232,9 @@ def compose(assertions: list[dict], gate: dict, judgments: list[dict], sources: 
             "status": status, "direction": direction, "limits": limits, "evidence": counted,
             # An established assertion names the independent dated sources it rests on; one is said to be one.
             "basis": _basis(counted) if status in ("supported", "contradicted") else "",
-            # Pages searched for the assertion are shown before pages found for the claim's terms, and
-            # a sentence giving the claim's figure before one that does not.
+            # Numeric proximity cannot establish a shared measure or improve relevance.
             "relevant": sorted([row for row in rows if row["relation"] == "bears_on"],
-                               key=lambda row: (row["origin"] != "assertion", "figures" not in row, -row.get("confidence", 0.0))),
-            # The claim's figures found in bearing sentences: the number checked, the claim not thereby stated.
-            "figures_confirmed": [{"claimed": item["claimed"], "read_as": item["read_as"], "relation": item["relation"],
-                                   "unit_id": row["unit_id"], "source_id": row["source_id"], "url": row["url"],
-                                   "independent_source": row["independent_source"], "origin": row["origin"]}
-                                  for row in rows if row["relation"] == "bears_on" for item in row.get("figures", [])],
+                               key=lambda row: (row["origin"] != "assertion", -row.get("confidence", 0.0))),
             "sources_for": len({row["independent_source"] for row in counted if row["relation"] == "states"}),
             "sources_against": len({row["independent_source"] for row in counted if row["relation"] == "states_negation"}),
             "judged": len(rows), "eligible": len(gate["eligible_ids"])})
@@ -263,7 +254,7 @@ def compose(assertions: list[dict], gate: dict, judgments: list[dict], sources: 
             "judge_note": measurement_note(judge_measurement, direction_measurement) if counted_any else "",
             "rules": ["Only reported observations passing the eligibility gate can count.",
                       "Only states and states_negation relations count; bears_on is shown, never counted.",
-                      "A bearing sentence that gives the claim's figure confirms the figure, not the claim.",
+                      "Numerical similarity alone does not confirm a claim's measure, population or period.",
                       "A sentence found by caption-concept research is shown, never counted.",
                       "A sentence dated wholly outside the claim's stated period is shown, never counted.",
                       "A qualifier on a counted sentence makes its assertion qualified, never established.",

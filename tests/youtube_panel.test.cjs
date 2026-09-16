@@ -540,9 +540,8 @@ test("sentence-level draft shows quoted sentences and its status without a verdi
   assert.match(content, /Definition in the same paragraph: “Defined as the share of the labor force\.”/);
   assert.match(content, /… and 2 more relevant sentences not shown\./);
   assert.match(content, /1 relevant sentence already shown above\./);
-  assert.match(content, /Its figure checks: “around 25%” is given as 24\.3% by finance\.yahoo\.com — in sentences that bear on the claim without stating it\./);
+  assert.doesNotMatch(content, /Its figure checks|Gives the claim’s figure/, "legacy arithmetic annotations cannot imply a shared measure");
   assert.doesNotMatch(content, /prnewswire\.com/, "a figure from a sentence the card does not quote is not cited");
-  assert.match(content, /Gives the claim’s figure: 24\.3% fits “around 25%”\./);
   assert.equal((content.match(/Wisconsin’s labor shortage is a major barrier/g) || []).length, 1);
   assert.match(content, /Read as context, never as evidence: 12 attributed opinion, 3 instruction or navigation text\./);
   assert.match(content, /it was wrong 10 of 18 times; a counted sentence is a lead to read, not a finding\./, "the judge's record sits on the card");
