@@ -118,6 +118,56 @@ def test_optional_selection_leaves_default_discovery_unchanged():
     assert all(query != "energy poverty" for query, _ in sources.calls)
 
 
+@pytest.mark.parametrize("claim", [
+    "We don't have a labor shortage. We have a good job shortage.",
+    "Households have a clean water shortage.",
+    "Vaccination rates increased among children.",
+    "Vaccination rates increased in 2025.",
+])
+@pytest.mark.parametrize("extra", ["", " [Background](https://example.org/labor-job-shortage-water-vaccination)"])
+def test_incidental_context_phrase_cannot_admit_an_unrelated_page(claim, extra):
+    speech = ClaimContext(TranscriptUpdate("claim", 0, claim, 10, 15, True),
+                          (TranscriptUpdate("prior", 0, "We bring people together.", 0, 9, True),))
+    concept = concept_packet(speech)["context_candidates"][0]
+
+    class Incidental(Sources):
+        def search_before(self, query, cutoff):
+            return [{"url": "https://example.org/app"}] if "people together" in query else []
+
+        def scrape(self, url):
+            return {"metadata": {"sourceURL": url}, "markdown": "# A new app brings people together in 2025\n\n"
+                    "The new app lets users invite friends and family to celebrations, share photo albums and plan events." + extra}
+
+    result = WebResearch(Incidental()).review(speech, SpeechMetadata(),
+        concept_selection={"selected_context_ids": [concept["id"]]})
+    assert result["sources"] == []
+    assert result["context_research"][0]["source_ids"] == []
+    assert result["context_research"][0]["searches"][0]["status"] == "returned_links"
+
+
+@pytest.mark.parametrize("claim,heading,definition", [
+    ("Households lack clean water.", "Water quality", "The index measures contamination levels observed across the households enrolled in the national survey."),
+    ("Vaccine coverage fell.", "Vaccine uptake", "The survey tracks the share of children who received all recommended doses during the observation period."),
+])
+def test_context_definition_can_connect_through_its_heading(claim, heading, definition):
+    speech = ClaimContext(TranscriptUpdate("claim", 0, claim, 10, 15, True),
+                          (TranscriptUpdate("prior", 0, f"The report refers to {heading}.", 0, 9, True),))
+    concept = next(item for item in concept_packet(speech)["context_candidates"] if item["text"] == heading)
+
+    class Definition(Sources):
+        def search_before(self, query, cutoff):
+            return [{"url": "https://example.org/report"}] if heading in query else []
+
+        def scrape(self, url):
+            return {"metadata": {"sourceURL": url}, "markdown": "# " + heading + "\n\n" + definition}
+
+    result = WebResearch(Definition()).review(speech, SpeechMetadata(),
+        concept_selection={"selected_context_ids": [concept["id"]]})
+    assert result["sources"][0]["reading_passages"] == [definition]
+    assert result["sources"][0]["excerpts"] == []
+    assert all(not part["source_ids"] for part in result["assertions"])
+
+
 def test_assertion_candidate_also_carries_section_dates_and_short_scope_notes():
     class Forecast(Sources):
         def search_before(self, query, cutoff):

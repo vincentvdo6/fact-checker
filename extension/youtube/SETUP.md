@@ -114,7 +114,10 @@ states -- "around 25%" against a published 24.3% -- the card says so as a number
 by the sentence's own publisher, and says that the sentence does not state the claim.
 Pages found by caption-concept research (phrases from the captions,
 such as the name of a measure the speaker cites) are shown as context and marked;
-they never resolve the claim. The reading is a draft over a model whose reading of a
+they never resolve the claim. A context page must also share a nonnumeric claim term
+in its selected reading window, including headings and scope notes; link targets do not
+count. This is a conservative lexical filter, not a semantic relevance check: synonyms
+can be missed and incidental shared words can still pass. The reading is a draft over a model whose reading of a
 single news sentence, when it counts one, was wrong about half the time on unseen claims
 (measured 2026-09-12 on labels an assistant wrote, not a person; the card prints the
 record beside every count), which is why one counted sentence never establishes anything

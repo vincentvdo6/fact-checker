@@ -114,6 +114,20 @@ def test_two_distinct_attempts_include_failures_and_ignore_duplicate_and_extra_r
     assert plan["errors"] == ["Web request failed (HTTP 403)"] and plan["status"] == "partial"
 
 
+def test_linked_context_pages_need_the_same_claim_connection_as_direct_results():
+    prior = (TranscriptUpdate("prior", 0, "Those people together.", 0, 9, True),)
+    speech = context(preceding=prior)
+    concept = concept_packet(speech)["context_candidates"][0]
+    original = parent(WATER + " People together can review the findings.")
+    unrelated = ("# An app brings people together\n\n"
+                 "The new app lets users invite friends and family to celebrations, share photo albums and plan events.")
+    sources = Sources({PARENT: page(original, PARENT)}, {CHILD: page(unrelated, CHILD)})
+    plan = review(sources, speech, selection={"selected_context_ids": [concept["id"]]})
+    assert sources.read == [CHILD], "the linked page was inspected, not silently skipped"
+    assert [row["url"] for row in plan["sources"]] == [PARENT]
+    assert plan["reference_research"]["source_ids"] == []
+
+
 def test_children_cannot_authorize_a_second_hop_even_when_attempt_budget_remains():
     grandchild = CHILD + "-grandchild"
     sources = Sources({PARENT: page(parent(), PARENT)}, {CHILD: page(parent(destinations=(grandchild,)), CHILD)})

@@ -25,6 +25,7 @@ from src.retrieval.research_passages import source_excerpts as source_excerpts
 from src.retrieval.search_contract import valid_query
 from src.retrieval.source_dates import publication_date, publication_notices, temporal_scope
 from src.retrieval.url_dates import later_by_path, url_path_date
+from src.retrieval.visible_text import visible_text
 from src.retrieval.web_sources import SourceUnavailable, WebSources, public_url
 
 _EXCLUDED_HOSTS = {"facebook.com", "instagram.com", "reddit.com", "youtube.com", "x.com"}
@@ -267,6 +268,13 @@ class WebResearch:
                 if reason := window.get("unavailable_reason"):
                     errors.append(reason)
                     continue
+                if is_context:
+                    # A literal caption phrase can be incidental speech. Its page must also
+                    # connect to the claim; URLs and distant page boilerplate cannot supply that link.
+                    visible, _ = visible_text("\n\n".join([*window["context"], *window["passages"]]))
+                    anchors = {term for term in content_terms(context.claim.text) if term.isalpha()}
+                    if not anchors.intersection(content_terms(visible)):
+                        continue
                 excerpts = (window["passages"] if is_context else
                             source_excerpts(source["markdown"], assertion["text"],
                                             context_query=assertion.get("context_query", assertion["query"])))
