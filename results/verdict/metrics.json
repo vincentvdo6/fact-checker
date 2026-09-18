@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "record_type": "extracted_aggregate_summary",
+  "extracted_on": "2026-09-18",
+  "execution_status": "Extracted from saved metrics; no model or retrieval run was repeated.",
+  "dataset_scope": "FEVER released development set; project-defined held-out test partition, not the official hidden test set.",
+  "split": "test",
+  "limitations": "Offline component evaluation; not political-video accuracy or current end-to-end extension reliability.",
+  "component": "verdict_classification",
+  "base_model": "microsoft/deberta-v3-base",
+  "calibration_status": "Uncalibrated predictions; separate from the vector-scaled probability metrics.",
+  "variants": {
+    "retrieved": {
+      "input": "Claim plus retrieved Wikipedia evidence.",
+      "claims": 2000,
+      "correct_predictions": 1403,
+      "accuracy": 0.7015
+    },
+    "claim_only": {
+      "input": "Claim text without evidence; dataset-artifact baseline.",
+      "claims": 2000,
+      "correct_predictions": 1173,
+      "accuracy": 0.5865
+    },
+    "gold": {
+      "input": "Claim plus gold evidence; oracle reference condition.",
+      "claims": 2000,
+      "correct_predictions": 1755,
+      "accuracy": 0.8775
+    }
+  },
+  "source": {
+    "path": "runs/verdict-test/metrics.json",
+    "sha256": "2247bd58d667f9b2dbe7cc7b1ddaaf793bf38ae5e3f3415e5b1323522b98297d",
+    "bytes": 3974
+  },
+  "source_json_pointers": {
+    "retrieved": "/retrieved",
+    "claim_only": "/claim_only",
+    "gold": "/gold"
+  },
+  "sample_check": "Saved prediction IDs and labels match across all three 2,000-claim variants; correctness counts match the saved aggregate accuracies."
+}

@@ -1,13 +1,17 @@
 # Saved offline benchmark results
 
 This record makes the project's earlier component evaluations inspectable. It
-summarizes saved Wikipedia retrieval and verdict-model calibration artifacts;
+summarizes saved Wikipedia retrieval, verdict-model comparison, and calibration artifacts;
 it does not evaluate the current YouTube extension as a complete system.
 
 The figures were extracted on September 18, 2026. No training, inference,
 retrieval, or calibration experiment was rerun for this documentation update.
-Exact values, selected configuration fields, and source-file SHA-256 hashes are
-in [saved_component_metrics.json](benchmarks/saved_component_metrics.json).
+Exact values, denominators, and source-file SHA-256 hashes are published as three
+small aggregate extracts: [calibration](../results/calibration/metrics.json),
+[verdict comparison](../results/verdict/metrics.json), and
+[retrieval](../results/retrieval/metrics.json). The earlier combined
+[saved_component_metrics.json](benchmarks/saved_component_metrics.json) is retained
+with additional configuration and provenance details.
 
 ## Results
 
@@ -17,12 +21,24 @@ in [saved_component_metrics.json](benchmarks/saved_component_metrics.json).
 | BM25 term-document postings | 292,551,543 | Index metadata |
 | Expected calibration error, before → after | 0.128668 → 0.031385 | Retrieved-evidence verdict model; 2,000 test claims |
 | Multiclass Brier score, before → after | 0.440891 → 0.374174 | Same model and 2,000 test claims |
+| Retrieved-evidence accuracy | 0.7015 (1,403/2,000) | Uncalibrated DeBERTa-v3-base verdict variant |
+| Claim-only accuracy | 0.5865 (1,173/2,000) | Uncalibrated variant without evidence; same test claims |
+| Gold-evidence accuracy | 0.8775 (1,755/2,000) | Uncalibrated oracle-evidence variant; same test claims |
 | Strict evidence recall at 25 sentences | 0.811111 | 1,350 verifiable claims from a 2,000-claim test sample |
 
 Lower calibration error and Brier score are better. The changes compare the
 uncalibrated model probabilities with vector-scaled probabilities on the same
 test sample. They describe probability quality on this benchmark, not the
 truthfulness of arbitrary video assessments.
+
+The verdict comparison uses three separately trained DeBERTa-v3-base variants:
+retrieved Wikipedia evidence, claim text alone, and gold evidence. Their saved
+test prediction IDs and labels match across all 2,000 claims; counting correct
+predictions reproduces the three saved aggregate accuracies. This read-only check
+does not rerun inference. These accuracies use uncalibrated predictions and are
+separate from the probability-calibration comparison above. The claim-only result
+is a reference for dataset artifacts; the gold result is an oracle condition,
+not a claim that real-world retrieval supplies perfect evidence.
 
 ## Evaluation design
 
@@ -58,6 +74,7 @@ hit. The definition is in [src/eval/retrieval.py](../src/eval/retrieval.py).
 | --- | --- |
 | Build the Wikipedia store and memory-mapped index | [build_wiki.py](../scripts/build_wiki.py), [build_index.py](../scripts/build_index.py), [bm25.py](../src/retrieval/bm25.py) |
 | Retrieve and score sentence evidence | [eval_retrieval.py](../scripts/eval_retrieval.py) |
+| Compare the three verdict variants | [eval_verdict.py](../scripts/eval_verdict.py) |
 | Fit and freeze calibration | [calibrate.py](../scripts/calibrate.py) |
 | Apply frozen calibration and score test predictions | [eval_calibration.py](../scripts/eval_calibration.py) |
 

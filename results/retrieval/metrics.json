@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "record_type": "extracted_aggregate_summary",
+  "extracted_on": "2026-09-18",
+  "execution_status": "Extracted from saved metrics; no model or retrieval run was repeated.",
+  "dataset_scope": "FEVER released development set; project-defined held-out test partition, not the official hidden test set.",
+  "split": "test",
+  "limitations": "Offline component evaluation; not political-video accuracy or current end-to-end extension reliability.",
+  "component": "bm25_evidence_retrieval",
+  "total_test_claims": 2000,
+  "verifiable_claims": 1350,
+  "not_enough_information_claims_excluded": 650,
+  "sentence_cutoff": 25,
+  "strict_evidence_recall": 0.8111111111111111,
+  "strict_recall_definition": "At least one complete gold evidence group must be contained in the first 25 retrieved sentence references.",
+  "corpus_index": {
+    "pages": 5416536,
+    "terms": 3412873,
+    "term_document_postings": 292551543
+  },
+  "source_fields": {
+    "recall": "cutoffs entry where k == 25, field recall",
+    "pages": "index metadata n_docs",
+    "term_document_postings": "index metadata postings"
+  },
+  "source_artifacts": [
+    {
+      "path": "runs/bm25-test/metrics.json",
+      "sha256": "bc9b62b9e05dbe245fd1ff50a87a863d86e3467c3a300a768d66299ba5a156c4",
+      "bytes": 1691
+    },
+    {
+      "path": "data/fever/index/meta.json",
+      "sha256": "3563da7959713a3b3167569ddf56701fe30283b98f47fa8f6ac306f1690ecc17",
+      "bytes": 210
+    }
+  ],
+  "run_provenance_note": "The run folder retains original and rescored configurations; the rescored record identifies a dirty working tree. Source hashes identify the saved files, not a fully reproducible clean run."
+}

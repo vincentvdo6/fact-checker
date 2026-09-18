@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "record_type": "extracted_aggregate_summary",
+  "extracted_on": "2026-09-18",
+  "execution_status": "Extracted from saved metrics; no model or retrieval run was repeated.",
+  "dataset_scope": "FEVER released development set; project-defined held-out test partition, not the official hidden test set.",
+  "split": "test",
+  "limitations": "Offline component evaluation; not political-video accuracy or current end-to-end extension reliability.",
+  "component": "confidence_calibration",
+  "model_variant": "retrieved",
+  "test_claims": 2000,
+  "calibrator": "vector_scaling",
+  "fitted_on": {
+    "split": "calibration",
+    "claims": 2000
+  },
+  "selection": {
+    "criterion": "out-of-fold negative log likelihood",
+    "folds": 5,
+    "seed": 0
+  },
+  "ece_equal_width_bins": 15,
+  "brier_definition": "Mean sum of squared errors across the three class probabilities.",
+  "uncalibrated": {
+    "ece": 0.12866802846431044,
+    "brier": 0.4408907516150756
+  },
+  "vector_scaled": {
+    "ece": 0.031384969816090035,
+    "brier": 0.37417416249997665
+  },
+  "source_json_pointers": {
+    "uncalibrated": "/variants/retrieved/raw",
+    "vector_scaled": "/variants/retrieved/calibrated"
+  },
+  "source_artifacts": [
+    {
+      "path": "runs/calibration-test/metrics.json",
+      "sha256": "0b3ffc0107c60753605667507b0326a1d97dd2479c657eb46d7e36e18b32695b",
+      "bytes": 1352476
+    },
+    {
+      "path": "models/verdict/retrieved/calibration.json",
+      "sha256": "96c45bbf2c488772587d1ef0913be73beb2a433b28fe231b8de206e61ac0813a",
+      "bytes": 1178
+    }
+  ]
+}

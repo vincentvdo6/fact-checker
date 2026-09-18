@@ -1,31 +1,41 @@
 # Fact Checker
 
-Fact Checker is an experimental project exploring how to help people investigate
-claims while watching online video. Development currently focuses on a YouTube
-browser extension that connects to a checker running on the user's computer.
+Fact Checker connects YouTube captions to a local Python claim-checking pipeline,
+combining DeBERTa classifiers, ONNX inference, and evidence retrieval. Its saved
+FEVER benchmark pipeline uses a SQLite-backed Wikipedia store and a memory-mapped
+BM25 index built in two streaming passes.
 
-The goal is to bring source material and context closer to the moment a claim is
-heard. A viewer can request a check from the video page and inspect the sources
-behind the result. The project explores claim detection, evidence retrieval, and
-how to communicate uncertainty when the available material cannot settle a claim.
+The browser extension lets a viewer request a check and inspect supporting source
+quotations and links. It remains a development prototype; the offline results
+below measure individual components, not reliability on political videos.
 
-## Saved offline benchmarks
+## Evaluation
 
-Earlier experiments measured Wikipedia retrieval and confidence calibration for a
-verdict model. The table below summarizes saved component results, extracted on
-September 18, 2026; the experiments were not rerun for this documentation update.
+These saved experiments evaluate three DeBERTa-v3-base verdict variants, confidence
+calibration, and Wikipedia evidence retrieval. The test sample contains **2,000
+held-out FEVER claims** from this project's partition of the released development
+set. It is separate from calibration data and is not FEVER's official hidden test
+benchmark. Results were extracted on September 18, 2026; experiments were not rerun.
 
-| Component | Saved result | Evaluation scope |
+| Measurement | Saved result | Scope and result record |
 | --- | --- | --- |
-| Wikipedia store and BM25 index | 5,416,536 pages; 292,551,543 term-document postings | Recorded corpus and index metadata |
-| Confidence calibration | Expected calibration error **0.129 → 0.031**; Brier score **0.441 → 0.374** | 2,000 held-out FEVER claims; vector scaling fitted on a separate calibration sample |
-| Evidence retrieval | **81.1%** strict evidence recall among the first 25 sentences | 1,350 verifiable claims within a 2,000-claim FEVER sample |
+| Wikipedia corpus and BM25 index | **5,416,536 pages; 292,551,543 postings** | [Recorded corpus/index metadata](results/retrieval/metrics.json) |
+| Expected calibration error | **0.129 → 0.031** | Retrieved-evidence model; [vector scaling fitted on 2,000 separate calibration claims](results/calibration/metrics.json) |
+| Multiclass Brier score | **0.441 → 0.374** | Same model and test sample; lower is better |
+| Uncalibrated verdict accuracy | **Retrieved: 70.2%; claim-only: 58.7%; gold evidence: 87.8%** | [Three model variants on the same 2,000 claims](results/verdict/metrics.json) |
+| Strict evidence recall@25 | **81.1%** | [1,350 verifiable claims](results/retrieval/metrics.json); excludes 650 insufficient-evidence claims |
 
-The test sample comes from this project's partition of FEVER's released
-development set. These results do not measure political-video accuracy or
-establish the current extension's end-to-end reliability. See the
-[benchmark methods and provenance](docs/benchmark_results.md) and the
-[small machine-readable result record](docs/benchmarks/saved_component_metrics.json).
+The claim-only baseline measures how much can be predicted without evidence; the
+gold-evidence variant provides an oracle reference for the retrieved-evidence
+model. Strict recall requires a complete gold evidence group among the first 25
+retrieved sentences. Calibration measures probability quality, not the truthfulness
+of arbitrary video assessments.
+
+The three small JSON files under [`results/`](results/) publish **aggregate extracts**
+with exact values, denominators, source paths, and SHA-256 hashes. They exclude raw
+claims, per-example predictions, datasets, and weights. The
+[benchmark methods and provenance](docs/benchmark_results.md) explain the splits,
+metric definitions, and reproduction limits.
 
 ## How it works
 
@@ -93,6 +103,7 @@ Current priorities are to:
 | [src/pipeline](src/pipeline/) | Claim processing and evidence retrieval |
 | [src/verdict](src/verdict/) | Models and rules for interpreting evidence |
 | [scripts](scripts/) | Setup, data preparation, and evaluation tools |
+| [results](results/) | Three small aggregate metric records with source-file hashes |
 | [docs/benchmark_results.md](docs/benchmark_results.md) | Saved offline results, metric definitions, and artifact provenance |
 | [tests](tests/) | Pipeline and extension tests |
 
