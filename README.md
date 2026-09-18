@@ -9,6 +9,24 @@ heard. A viewer can request a check from the video page and inspect the sources
 behind the result. The project explores claim detection, evidence retrieval, and
 how to communicate uncertainty when the available material cannot settle a claim.
 
+## Saved offline benchmarks
+
+Earlier experiments measured Wikipedia retrieval and confidence calibration for a
+verdict model. The table below summarizes saved component results, extracted on
+September 18, 2026; the experiments were not rerun for this documentation update.
+
+| Component | Saved result | Evaluation scope |
+| --- | --- | --- |
+| Wikipedia store and BM25 index | 5,416,536 pages; 292,551,543 term-document postings | Recorded corpus and index metadata |
+| Confidence calibration | Expected calibration error **0.129 → 0.031**; Brier score **0.441 → 0.374** | 2,000 held-out FEVER claims; vector scaling fitted on a separate calibration sample |
+| Evidence retrieval | **81.1%** strict evidence recall among the first 25 sentences | 1,350 verifiable claims within a 2,000-claim FEVER sample |
+
+The test sample comes from this project's partition of FEVER's released
+development set. These results do not measure political-video accuracy or
+establish the current extension's end-to-end reliability. See the
+[benchmark methods and provenance](docs/benchmark_results.md) and the
+[small machine-readable result record](docs/benchmarks/saved_component_metrics.json).
+
 ## How it works
 
 1. Play a YouTube video with available English captions and let a claim finish.
@@ -75,6 +93,7 @@ Current priorities are to:
 | [src/pipeline](src/pipeline/) | Claim processing and evidence retrieval |
 | [src/verdict](src/verdict/) | Models and rules for interpreting evidence |
 | [scripts](scripts/) | Setup, data preparation, and evaluation tools |
+| [docs/benchmark_results.md](docs/benchmark_results.md) | Saved offline results, metric definitions, and artifact provenance |
 | [tests](tests/) | Pipeline and extension tests |
 
 For a reproducible problem, include the video URL and timestamp, the exact claim,

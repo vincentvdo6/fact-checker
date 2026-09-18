@@ -1,0 +1,140 @@
+{
+  "schema_version": 1,
+  "record_type": "saved_offline_component_benchmarks",
+  "extracted_on": "2026-09-18",
+  "execution_status": "Extracted from saved artifacts; training, retrieval, inference and calibration were not rerun for this documentation update.",
+  "source_repository": "https://github.com/vincentvdo6/fact-checker",
+  "source_code_review_commit": "30ea141a527d83efbc404cc99bf983067c8e8cc9",
+  "source_code_review_note": "This identifies the code inspected for documentation, not a verified run or training commit.",
+  "corpus_index": {
+    "dataset": "FEVER Wikipedia corpus",
+    "pages": 5416536,
+    "terms": 3412873,
+    "term_document_postings": 292551543,
+    "source": "data/fever/index/meta.json",
+    "source_fields": {
+      "pages": "n_docs",
+      "terms": "terms",
+      "term_document_postings": "postings"
+    }
+  },
+  "calibration": {
+    "dataset": "FEVER released development set; project-defined held-out test partition",
+    "variant": "retrieved",
+    "evaluation_split": "test",
+    "test_claims": 2000,
+    "method": "vector_scaling",
+    "fitted_on": {
+      "split": "calibration",
+      "claims": 2000
+    },
+    "selection": {
+      "criterion": "out-of-fold negative log likelihood",
+      "folds": 5,
+      "seed": 0
+    },
+    "expected_calibration_error_equal_width_bins": 15,
+    "brier_definition": "Mean across claims of the sum of squared errors across the three class probabilities.",
+    "uncalibrated": {
+      "ece": 0.12866802846431044,
+      "brier": 0.4408907516150756
+    },
+    "vector_scaled": {
+      "ece": 0.031384969816090035,
+      "brier": 0.37417416249997665
+    },
+    "source": "runs/calibration-test/metrics.json",
+    "source_json_pointers": {
+      "uncalibrated_ece": "/variants/retrieved/raw/ece",
+      "uncalibrated_brier": "/variants/retrieved/raw/brier",
+      "vector_scaled_ece": "/variants/retrieved/calibrated/ece",
+      "vector_scaled_brier": "/variants/retrieved/calibrated/brier"
+    },
+    "saved_prediction_id_check": {
+      "checked_on": "2026-09-18",
+      "calibration_rows": 2000,
+      "test_rows": 2000,
+      "shared_claim_ids": 0,
+      "scope": "Read-only ID/count check of saved prediction files, not a full training-leakage audit or metric recomputation."
+    }
+  },
+  "retrieval": {
+    "dataset": "FEVER released development set; project-defined held-out test partition",
+    "total_test_claims": 2000,
+    "verifiable_claims": 1350,
+    "not_enough_information_claims_excluded_from_recall": 650,
+    "sentence_cutoff": 25,
+    "strict_evidence_recall": 0.8111111111111111,
+    "strict_recall_definition": "At least one complete gold evidence group must be contained in the first 25 retrieved sentence references.",
+    "source": "runs/bm25-test/metrics.json",
+    "source_field": "cutoffs entry where k == 25, field recall",
+    "retained_configuration_records": [
+      {
+        "path": "runs/bm25-test/config.json",
+        "split": "test",
+        "claims": 2000,
+        "pages_per_claim": 25,
+        "stored_k": 25,
+        "git_sha": "091f2fa"
+      },
+      {
+        "path": "runs/bm25-test/config.rescored.json",
+        "split": "test",
+        "claims": 2000,
+        "pages_per_claim": 25,
+        "stored_k": 25,
+        "git_sha": "fcff0bf-dirty"
+      }
+    ],
+    "configuration_note": "The folder retains original and rescored configurations. The rescored record identifies a dirty working tree; the saved metrics are not fully bound to a reproducible clean commit by these files."
+  },
+  "source_artifacts": [
+    {
+      "path": "data/fever/index/meta.json",
+      "sha256": "3563da7959713a3b3167569ddf56701fe30283b98f47fa8f6ac306f1690ecc17",
+      "bytes": 210
+    },
+    {
+      "path": "runs/bm25-test/metrics.json",
+      "sha256": "bc9b62b9e05dbe245fd1ff50a87a863d86e3467c3a300a768d66299ba5a156c4",
+      "bytes": 1691
+    },
+    {
+      "path": "runs/calibration-test/metrics.json",
+      "sha256": "0b3ffc0107c60753605667507b0326a1d97dd2479c657eb46d7e36e18b32695b",
+      "bytes": 1352476
+    },
+    {
+      "path": "models/verdict/retrieved/calibration.json",
+      "sha256": "96c45bbf2c488772587d1ef0913be73beb2a433b28fe231b8de206e61ac0813a",
+      "bytes": 1178
+    },
+    {
+      "path": "models/verdict/retrieved/predictions_calibration.jsonl",
+      "sha256": "61540f7062660ef7bcfe901fec948a0950dc9a41f13bc9ae93e289e3fbb4372e",
+      "bytes": 404618
+    },
+    {
+      "path": "models/verdict/retrieved/predictions_test.jsonl",
+      "sha256": "45956a52bbece9258ca7d46bb9ae1dd0a6e168de92c90499491f45a73de0053a",
+      "bytes": 404225
+    },
+    {
+      "path": "runs/bm25-test/config.json",
+      "sha256": "e2a245369cd6fd5543e422ddf52499861d0b3c4484238d897ac65b3a35371594",
+      "bytes": 301
+    },
+    {
+      "path": "runs/bm25-test/config.rescored.json",
+      "sha256": "7699a5a74abb3f829cc95d7d61e6ff8d7d525d5a44587b52795bc1811408797a",
+      "bytes": 327
+    }
+  ],
+  "publication_scope": "Only aggregate metrics, selected configuration fields and SHA-256 hashes are included. Raw claims, predictions, datasets, indexes, model weights and machine-specific paths are excluded.",
+  "limitations": [
+    "These are historical offline component measurements, not current end-to-end extension measurements.",
+    "The project test partition is not the official hidden FEVER test benchmark.",
+    "The results do not establish accuracy on political videos, recent news or arbitrary web claims.",
+    "Source hashes identify the saved files inspected; they do not independently reproduce or validate the experiments."
+  ]
+}
