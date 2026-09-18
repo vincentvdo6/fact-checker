@@ -30,6 +30,23 @@ def states_everything(assertions, units):
              "qualifiers": [], "confidence": 0.9} for assertion in assertions for unit in units]
 
 
+def test_the_live_judge_receives_a_complete_sentence_with_its_citation_intact():
+    sentence = "The [vaccination](https://example.org/coverage(2025).) rate reached 30%."
+    plan = {**PLAN, "sources": [{**PLAN["sources"][1], "excerpts": [sentence], "reading_passages": []}]}
+    seen = []
+
+    def judge(assertions, units):
+        seen.extend(units)
+        return [{"assertion_id": a["id"], "unit_id": u["id"], "relation": "bears_on",
+                 "span": u["text"], "qualifiers": []} for a in assertions for u in units]
+
+    result = check_claim("Vaccination coverage reached 30%.", plan, judge)
+    assert [u["text"] for u in seen] == [sentence]
+    assert result["judgments"][0]["span"] == sentence
+    assert result["verdict"]["assertions"][0]["relevant"][0]["text"] == sentence
+    assert result["verdict"]["assertions"][0]["evidence"] == []
+
+
 def test_research_packet_keeps_concept_passages_apart_and_drops_later_sources():
     packet = research_packet(CLAIM, PLAN)
     assert [source["id"] for source in packet["sources"]] == ["source-1", "source-2", "source-4", "source-5"]

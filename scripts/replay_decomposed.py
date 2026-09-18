@@ -46,7 +46,8 @@ def project_annotations(packet: dict, archived: list[dict]) -> list[dict]:
     The archive annotated sentences segmented without line breaks, so a heading kept with its
     paragraph was one sentence there and is two units now, and every later number in that
     paragraph has shifted. Units are therefore matched by span, never by identity: each current
-    unit inherits the roles of the archived sentence whose span contains its start.
+    unit inherits roles only when its entire span fits in one archived sentence.
+    Repaired citation boundaries can merge old fragments; those need fresh labels.
     """
     roles = {row["unit_id"]: row["roles"] for row in archived}
     projected = []
@@ -54,14 +55,19 @@ def project_annotations(packet: dict, archived: list[dict]) -> list[dict]:
         old = [(f"{passage['id']}:u{sentence.index + 1}", sentence.start, sentence.end)
                for sentence in segment(passage["text"])]
         for unit in passage["units"]:
-            holder = next(identity for identity, start, end in old if start <= unit["start"] < end)
+            holder = next((identity for identity, start, end in old
+                           if start <= unit["start"] < unit["end"] <= end), None)
+            if holder is None:
+                raise ValueError(f"Sentence boundaries changed for {unit['id']}; archived roles require relabelling.")
             projected.append({"unit_id": unit["id"], "roles": roles[holder]})
     return projected
 
 
-def load_records(archive: Path) -> tuple[list[dict], dict[int, list[dict]]]:
+def load_records(archive: Path, *, with_archived_roles: bool = True) -> tuple[list[dict], dict[int, list[dict]]]:
     with zipfile.ZipFile(archive) as bundle:
         cases = json.loads(bundle.read(CASES).decode("utf-8"))["frozen_cases"]
+        if not with_archived_roles:
+            return cases, {}
         readings = json.loads(bundle.read(ROLES).decode("utf-8"))["runs"]
     annotations: dict[int, list[dict]] = {}
     for run in readings:
@@ -88,7 +94,7 @@ def main() -> None:
     parser.add_argument("--roles", choices=["archived", "rules"], default="archived",
                         help="archived model annotations, or the closed-class rule typer the live path uses")
     args = parser.parse_args()
-    cases, annotations = load_records(args.archive)
+    cases, annotations = load_records(args.archive, with_archived_roles=args.roles == "archived")
     OUT.mkdir(parents=True, exist_ok=True)
     report = {"archive": str(args.archive), "judge": args.judge, "min_band": args.min_band if args.judge in ("fever", "pair") else None,
               "probe_negation": args.probe_negation, "probe_hedges": args.probe_hedges,

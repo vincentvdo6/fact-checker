@@ -12,11 +12,26 @@ from __future__ import annotations
 import re
 
 from src.pipeline.segment import segment
+from src.retrieval.visible_text import inline_links
 
 _LINE = re.compile(r"[^\n]+")
 
 ROLES = ("reported_observation", "definition", "hypothetical", "forecast",
          "attributed_opinion", "instruction", "unknown")
+
+
+def _sentence_spans(text: str) -> list[tuple[int, int]]:
+    """Treat inline citations as indivisible without changing the quoted source offsets.
+
+    URL punctuation, link titles and line breaks inside markup are not prose
+    boundaries. Equal-length placeholders keep every span in the original paragraph;
+    even a label containing several sentences stays together with its destination.
+    """
+    boundary_text = list(text)
+    for link in inline_links(text):
+        boundary_text[link["start"]:link["end"]] = "x" * (link["end"] - link["start"])
+    return [(line.start() + sentence.start, line.start() + sentence.end)
+            for line in _LINE.finditer("".join(boundary_text)) for sentence in segment(line.group())]
 
 
 def reading_packet(packet: dict) -> dict:
@@ -34,9 +49,8 @@ def reading_packet(packet: dict) -> dict:
         excerpts += [(text, "context") for text in source.get("context_excerpts", [])]
         for index, (text, origin) in enumerate(excerpts):
             identity = f"{source['id']}:p{index + 1}"
-            # A heading kept with its paragraph sits on its own line; a line break ends a sentence.
-            spans = [(line.start() + sentence.start, line.start() + sentence.end)
-                     for line in _LINE.finditer(text) for sentence in segment(line.group())]
+            # Headings stay separate; only line breaks outside inline citations end a sentence.
+            spans = _sentence_spans(text)
             units = [{"id": f"{identity}:u{number}", "text": text[start:end], "start": start, "end": end}
                      for number, (start, end) in enumerate(spans, 1)]
             if any(text[unit["start"]:unit["end"]] != unit["text"] for unit in units):
