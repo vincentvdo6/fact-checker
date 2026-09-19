@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from src.verdict.quantities import APPROXIMATION, hedged_form, hedged_quantities
 
 
@@ -41,3 +43,37 @@ def test_every_hedged_figure_is_read_against_the_nearest_fit_and_unmatched_ones_
     both = hedged_form(claim, "Those earning under $25,000 a year were 24.3% of the labor force.")
     assert both[0] == "People who make around $25,000 a year: that's around 24.3% of the population."
     assert [item["claimed"] for item in both[1]] == ["$25,000", "25%"]
+
+
+@pytest.mark.parametrize("sentence", [
+    "Formerly incarcerated people were 24% [less likely](https://example.org/report) to return to prison.",
+    "The treatment group was 24 percent less likely to develop symptoms.",
+    "Prices were 24% higher than last year.",
+    "The study found a 24% reduction in missed appointments.",
+    "The response rate increased by 24%.",
+    "The response rate increased by roughly 24%.",
+    "Costs could drop by 24%.",
+    "The response rate fell 24%.",
+    "The group had a 24% relative risk reduction.",
+    "The response rate rose by 24 percentage points.",
+])
+def test_a_population_share_cannot_borrow_a_relative_change_or_percentage_points(sentence):
+    assert hedged_form("Around 25% of the population responded.", sentence) is None
+
+
+def test_percentage_kinds_stay_distinct_in_both_directions():
+    assert hedged_form("Costs were around 25% higher.", "Costs were 24% of revenue.") is None
+    assert hedged_form("Coverage rose by around 25 percentage points.", "Coverage was 24%.") is None
+    assert hedged_form("Coverage rose by around 25 percentage points.", "Coverage rose by 24%.") is None
+    assert hedged_form("Coverage rose by around 25%.", "Coverage rose by 24 percentage points.") is None
+    assert hedged_form("Costs were around 25% higher.", "Costs were 24% higher than before.")[0] == "Costs were around 24% higher."
+    assert hedged_form("Coverage rose by around 25 percentage points.", "Coverage rose by 24 percentage points.")[0] == (
+        "Coverage rose by around 24 percentage points.")
+
+
+def test_only_visible_source_numbers_can_supply_a_hedge_substitution():
+    claim = "Around 25% of households responded."
+    assert hedged_form(claim, 'Read the [survey](https://example.org/24.3% "24.3% responded").') is None
+    assert hedged_form(claim, "The survey is at https://example.org/24.3% today.") is None
+    assert hedged_form(claim, "The rate was [24.3%](https://example.org/report). ")[0] == "Around 24.3% of households responded."
+    assert hedged_form(claim, "The rate was 24% lower, reaching 24.3% of households.")[0] == "Around 24.3% of households responded."

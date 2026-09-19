@@ -24,6 +24,7 @@ function reader({
   isLiveContent = false,
   liveBroadcastDetails = undefined,
   audioTracks = [],
+  time = 20,
 } = {}) {
   const videoId = "abcdefghijk";
   const player = {
@@ -80,7 +81,7 @@ function reader({
             : [],
       querySelector: (selector) =>
         selector === "video.html5-main-video"
-          ? { currentTime: 20, textTracks: native }
+          ? { currentTime: time, textTracks: native }
           : selector === "ytd-transcript-renderer #footer"
             ? { textContent: "English" }
             : selector === "#description-inline-expander #expand"
@@ -134,6 +135,31 @@ test("track parsing retains only completed recent cues", async () => {
   assert.equal(result.captions[0].text, "The law passed.");
   assert.equal(result.source, "track");
   assert.equal(result.time, 20);
+});
+
+test("recent captions keep a completed cue crossing the window start", async () => {
+  const cues = [
+    { start: 20, end: 30, text: "Stale sentence." },
+    { start: 29, end: 35, text: "Among the surveyed households," },
+    { start: 35, end: 55, text: "24% had solar panels." },
+    { start: 55, end: 61, text: "Not finished yet." },
+    { start: 61, end: 65, text: "Future sentence." },
+  ];
+  const app = reader({ time: 60, tracks: [track], events: cues.map(cue => ({
+    tStartMs: cue.start * 1000, dDurationMs: (cue.end - cue.start) * 1000, segs: [{ utf8: cue.text }],
+  })) });
+  const result = await app.read();
+  assert.deepEqual(Array.from(result.captions, cue => cue.text), [cues[1].text, cues[2].text]);
+});
+
+test("a later click retains the population definition in the saved video fixture", async () => {
+  const fixture = JSON.parse(readFileSync(join(__dirname, "youtube_labor_case.json"), "utf8"));
+  const cues = [...fixture.captions, { start: 3173, end: 3184, text: "Later speech." }];
+  const app = reader({ time: 3184.5, tracks: [track], events: cues.map(cue => ({
+    tStartMs: cue.start * 1000, dDurationMs: (cue.end - cue.start) * 1000, segs: [{ utf8: cue.text }],
+  })) });
+  const result = await app.read();
+  assert.deepEqual(Array.from(result.captions, cue => cue.text), cues.slice(2).map(cue => cue.text));
 });
 
 test("publication metadata follows the video without becoming a speech date", async () => {

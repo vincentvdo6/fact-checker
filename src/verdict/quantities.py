@@ -9,14 +9,17 @@ anything else, so it is asked about the sentence's own figure in the claim's pla
 the hedge kept. This is the negation probe's shape: a mechanical form the model can read,
 with the transformation carried by code and recorded on the judgment.
 
-A year is never a quantity here, a figure only ever matches one of its own kind (percent,
-currency, count), and a hedged figure with no matching figure in the sentence is left as
-written, so an unrelated sentence gains nothing.
+A year is never a quantity here. Percentages, recognized relative-change forms, percentage
+points, currencies and counts are separate kinds. Recognizing a kind does not establish
+that two figures measure the same population or outcome. A missing match leaves the
+claim as written; the judge can still misread an unrelated sentence.
 """
 
 from __future__ import annotations
 
 import re
+
+from src.retrieval.visible_text import visible_text
 
 APPROXIMATION = 0.05        # relative tolerance for "around", "about", "nearly", "just over" ...
 
@@ -38,6 +41,10 @@ _UNIT = r"(?:\s?(?P<percent>%|percent|per cent|percentage points?)|\s(?P<scale>t
 _QUANTITY = re.compile(rf"(?<![\w.]){_NUMBER}{_UNIT}(?!\w|\.\d)", re.I)
 _HEDGED = re.compile(rf"\b(?P<hedge>{_HEDGE})\s+(?={_NUMBER})", re.I)
 _SCALE = {"thousand": 1e3, "million": 1e6, "billion": 1e9, "trillion": 1e12}
+_RELATIVE_AFTER = re.compile(r"^\s+(?:(?:more|less)\s+likely|higher|lower|larger|smaller|"
+                             r"(?:relative\s+(?:risk\s+)?)?(?:increase|decrease|reduction|growth))\b", re.I)
+_RELATIVE_BEFORE = re.compile(rf"\b(?:increased?|decreased?|reduced?|rose|fell|grew|drop(?:ped)?)\s+(?:by\s+)?"
+                              rf"(?:(?:{_HEDGE})\s+)?$", re.I)
 
 
 def _figures(text: str) -> list[dict]:
@@ -46,7 +53,12 @@ def _figures(text: str) -> list[dict]:
         number = match["number"].replace(",", "")
         value = float(number)
         if match["percent"]:
-            kind = "percent"
+            if match["percent"].lower().startswith("percentage point"):
+                kind = "percentage_points"
+            elif _RELATIVE_AFTER.match(text[match.end():]) or _RELATIVE_BEFORE.search(text[:match.start()]):
+                kind = "relative_percent"
+            else:
+                kind = "percent"
         elif match["currency"]:
             kind = "currency"
         elif match["scale"] or "," in match["number"] or "." in match["number"]:
@@ -87,7 +99,8 @@ def hedged_form(claim: str, sentence: str) -> tuple[str, list[dict]] | None:
     None when nothing fits: the claim then reads as written. The record lists every
     substitution so a judgment made on the form can be traced to the figure it was read with.
     """
-    given = _figures(sentence)
+    # Hidden destinations and link titles cannot supply a quantity or hide its comparator.
+    given = _figures(visible_text(sentence)[0])
     substitutions = []
     for hedged in hedged_quantities(claim):
         fitting = [figure for figure in given if figure["kind"] == hedged["kind"]

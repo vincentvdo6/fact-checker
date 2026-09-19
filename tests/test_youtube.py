@@ -95,6 +95,32 @@ def test_rolling_caption_dedup_keeps_nonoverlapping_repetitions():
     assert excerpt.text == "The law passed. The law passed."
 
 
+def test_caption_window_keeps_the_complete_cue_crossing_its_start():
+    excerpt = caption_excerpt(payload(time=60, captions=[
+        {"start": 20, "end": 30, "text": "Stale sentence."},
+        {"start": 29, "end": 35, "text": "Among the surveyed households,"},
+        {"start": 35, "end": 55, "text": "24% had solar panels."},
+        {"start": 55, "end": 61, "text": "Not finished yet."},
+        {"start": 61, "end": 65, "text": "Future sentence."},
+    ]))
+    assert excerpt.text == "Among the surveyed households, 24% had solar panels."
+    assert (excerpt.start, excerpt.end) == (29, 55)
+
+
+def test_later_click_keeps_population_definition_from_saved_captions():
+    from src.pipeline.caption_claims import caption_claims
+
+    fixture = json.loads(Path("tests/youtube_labor_case.json").read_text(encoding="utf-8"))
+    fixture["time"] = 3184.5
+    fixture["captions"].append({"start": 3173, "end": 3184, "text": "Later speech."})
+    excerpt = caption_excerpt(fixture)
+    expected = fixture["captions"][2]["text"].removeprefix("Okay. ") + " " + fixture["captions"][3]["text"].split(". So")[0] + "."
+    claims = [sentence.text for sentence in caption_claims(excerpt.text)]
+    assert expected in claims
+    assert "We don't have a labor shortage. We have a good job shortage." in claims
+    assert excerpt.start == 3153
+
+
 def test_nested_caption_ends_do_not_make_a_recent_excerpt_stale():
     excerpt = caption_excerpt(payload(time=20, captions=[
         {"start": 0, "end": 20, "text": "The law passed."},

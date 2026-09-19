@@ -85,6 +85,26 @@ def test_hedge_probe_judges_the_sentence_figure_in_the_claims_place_and_records_
                for row in plain(assertions[:1], units))
 
 
+def test_hedge_probe_preserves_population_claim_against_a_relative_risk(tmp_path, monkeypatch):
+    import numpy as np
+
+    judge = PairJudge(model_dir=contract(tmp_path), probe_hedges=True)
+    claim = "That's around 25% of the population."
+    sentence = "Formerly incarcerated people are 24% [less likely](https://example.org/report) to return to prison."
+    seen = []
+
+    def probabilities(pairs):
+        seen.extend(pairs)
+        return np.array([[0.1, 0.1, 0.8, 0.0] for _ in pairs])
+
+    monkeypatch.setattr(judge, "probabilities", probabilities)
+    row, = judge([{"id": "a1", "text": claim, "negated": False}],
+                 [{"id": "u1", "text": sentence, "definitions": []}])
+    assert seen == [(sentence, claim)]
+    assert row["judged_text"] == claim and "figures_read" not in row
+    assert row["span"] == sentence and row["relation"] == "bears_on", "quantity kinds do not override the model's relation"
+
+
 def test_threshold_sweep_counts_the_judges_reading_not_its_banded_answer():
     from scripts.eval_pair_judge import threshold_sweep
 

@@ -94,7 +94,8 @@ def caption_excerpt(payload: dict) -> CaptionExcerpt:
         text = cue.get("text")
         if end < start or end - start > 120 or not isinstance(text, str) or len(text) > 4000:
             raise ValueError("Invalid caption text or duration.")
-        if max(0, clicked_at - 30) <= start <= end <= clicked_at and text.strip():
+        # A cue crossing the left edge may contain the subject of the next cue's claim.
+        if max(0, clicked_at - 30) < end <= clicked_at and text.strip():
             selected.append((start, end, " ".join(text.split())))
     selected.sort(key=lambda cue: (cue[0], cue[1]))
     latest_end = max((cue[1] for cue in selected), default=-1.0)

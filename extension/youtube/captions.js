@@ -53,7 +53,8 @@ export async function readCaptions(observed = {}) {
       cues
         .filter(
           (cue) =>
-            cue.start >= Math.max(0, time - 30) &&
+            cue.start >= 0 &&
+            cue.end > Math.max(0, time - 30) &&
             cue.end <= time &&
             cue.end >= cue.start &&
             cue.text.trim(),
