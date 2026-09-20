@@ -344,6 +344,40 @@ def test_broken_native_transport_stops_without_retrying_or_processing_next_reque
     assert calls == ["check", "write", "close"]
 
 
+def test_context_review_factory_uses_installed_model_and_allows_opt_out(monkeypatch, tmp_path):
+    from src.pipeline import youtube as module
+    from src.pipeline.context import SpeechMetadata
+    from src.verdict.context_review import ContextReviewedJudge
+
+    primary, reviewer = tmp_path / "primary", tmp_path / "reviewer"
+    primary.mkdir()
+    (reviewer / "onnx").mkdir(parents=True)
+    (primary / "contract.json").write_text("{}")
+    (reviewer / "contract.json").write_text("{}")
+    graph = reviewer / "onnx/model.onnx"
+    graph.write_bytes(b"fixture")
+    monkeypatch.setattr("src.verdict.pair_judge.MODEL_DIR", primary)
+    monkeypatch.setattr("src.verdict.context_review.MODEL_DIR", reviewer)
+    monkeypatch.setattr("src.verdict.pair_judge.PairJudge", lambda **kw: SimpleNamespace(
+        root=kw["model_dir"], measurement=None, direction_measurement=None))
+    monkeypatch.setattr(module, "LiveProcessor", lambda metadata, **kw: SimpleNamespace(**kw))
+    monkeypatch.setenv("FACT_CHECKER_CONCEPTS", "off")
+    monkeypatch.setenv("FACT_CHECKER_WEB_SEARCH", "off")
+    monkeypatch.setenv("FACT_CHECKER_DECOMPOSED", "on")
+    monkeypatch.delenv("FACT_CHECKER_PAIR_JUDGE", raising=False)
+    monkeypatch.delenv("FACT_CHECKER_CONTEXT_REVIEW", raising=False)
+    processor = module.youtube_processor(SpeechMetadata())
+    assert isinstance(processor.judge, ContextReviewedJudge)
+    assert processor.judge.primary.root == primary and processor.judge.reviewer.root == reviewer
+    monkeypatch.setenv("FACT_CHECKER_CONTEXT_REVIEW", "off")
+    assert module.youtube_processor(SpeechMetadata()).judge.root == primary
+    monkeypatch.setenv("FACT_CHECKER_CONTEXT_REVIEW", "on")
+    graph.unlink()
+    processor = module.youtube_processor(SpeechMetadata())
+    assert processor.judge.root == primary
+    assert processor.notes == ["Context review is off: the second local judge is not installed."]
+
+
 def test_processor_factory_defaults_both_stages_on_and_reports_missing_artifacts(monkeypatch, tmp_path):
     from src.pipeline import youtube as module
     from src.pipeline.context import SpeechMetadata

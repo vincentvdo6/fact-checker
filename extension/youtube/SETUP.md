@@ -122,6 +122,15 @@ single news sentence, when it counts one, was wrong about half the time on unsee
 record beside every count), which is why one counted sentence never establishes anything
 and why every counted sentence is quoted with its direction for you to read yourself.
 
+Set `FACT_CHECKER_CONTEXT_REVIEW` to `off` to skip the second opinion on contextual
+sentences. When the local v5 pair judge is installed, it reviews only sentences the
+primary judge calls contextual and withholds ones it considers unrelated. It cannot
+change support or contradiction decisions or turn context into proof. Disagreements
+remain in the saved check's `context_review` fields. This can also withhold useful
+context and adds model loading and inference time. It uses another local model
+(about 739 MB on disk), without downloading one automatically; a missing model is
+reported in the check's notes. A model runtime error fails the check visibly.
+
 Set `FACT_CHECKER_DECOMPOSED` to `off` to remove the reading, or
 `FACT_CHECKER_CONCEPTS` to `off` to skip caption-concept research. Each needs a local
 artifact -- the pair judge under `models/pair_judge` and the Wikipedia store for

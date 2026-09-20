@@ -156,6 +156,16 @@ def youtube_processor(metadata: SpeechMetadata) -> LiveProcessor:
         model_dir = Path(os.environ.get("FACT_CHECKER_PAIR_JUDGE", "").strip() or MODEL_DIR)
         if (model_dir / "contract.json").is_file():
             judge = PairJudge(model_dir=model_dir, min_band=Band.STRONG, probe_negation=True, probe_hedges=True)
+            if _switch("FACT_CHECKER_CONTEXT_REVIEW"):
+                from src.verdict.context_review import MODEL_DIR as CONTEXT_MODEL_DIR
+                from src.verdict.context_review import ContextReviewedJudge
+
+                if (CONTEXT_MODEL_DIR / "contract.json").is_file() and (CONTEXT_MODEL_DIR / "onnx/model.onnx").is_file():
+                    reviewer = PairJudge(model_dir=CONTEXT_MODEL_DIR, min_band=Band.STRONG,
+                                         probe_negation=True, probe_hedges=True)
+                    judge = ContextReviewedJudge(judge, reviewer)
+                else:
+                    notes.append("Context review is off: the second local judge is not installed.")
         else:
             notes.append("Sentence-level reading is off: the pair judge is not installed.")
     return LiveProcessor(metadata, query_mode="topic", web=web, judge=judge, specificity=specificity, notes=notes)
