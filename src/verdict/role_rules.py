@@ -22,6 +22,7 @@ import re
 from urllib.parse import urlsplit
 
 from src.pipeline.segment import AUXILIARIES, IRREGULAR_PAST, QUESTION_OPENERS
+from src.retrieval.visible_text import inline_links
 
 _WORD = re.compile(r"[A-Za-z][A-Za-z'’-]*")
 _LINK = re.compile(r"\[[^\]]*\]\([^)]*\)|https?://\S+|www\.\S+")
@@ -65,12 +66,18 @@ _NUMBER = re.compile(r"\d")
 # Publishers label opinion sections in the path; every sentence on such a page is someone's argument.
 _OPINION_SECTION = re.compile(r"/(?:opinions?|op-eds?|columnists?|columns?|editorials?|commentary|perspectives?|"
                               r"letters(?:-to-the-editor)?|blogs?)(?:/|$)", re.I)
+# A photo caption ends in its credit -- "Molly Riley/AP via The White House  hide caption", "(AP Photo/Evan Vucci)",
+# "REUTERS/Kevin Lamarque", "(Image/PTI)", "Photo: Getty Images" -- and describes a picture, not the event; the
+# tail is read on the whole passage, so every sentence the caption carries is context.
+_CREDIT_TAIL = re.compile(r"(?:(?i:hide caption)|\b(?i:photo|photograph|image|illustration|credit|source)s?\s*[:/]\s*[^.!?]{2,80}|"
+                          r"\b(?:AP|AFP|Reuters|REUTERS|EPA|PTI|ANI|Xinhua|Bloomberg|Shutterstock|Getty Images|Getty)\b"
+                          r"(?:\s*/\s*[A-Z][^.!?]{1,60}|\s+via\s+[^.!?]{2,60})?)\s*\)?\s*$")
 IMPERATIVES = frozenset("""
     click see read visit follow subscribe sign download learn contact ignore output cite view check watch listen
     call email join register buy order note please treat return use try get find go tell say write
     """.split())
 
-ROLES = ("reported_observation", "definition", "hypothetical", "forecast", "attributed_opinion", "instruction", "unknown")
+ROLES = ("reported_observation", "definition", "hypothetical", "forecast", "attributed_opinion", "instruction", "caption", "unknown")
 
 
 def _finite_verb(words: list[str]) -> bool:
@@ -88,15 +95,30 @@ def opinion_source(url: str) -> bool:
     return bool(_OPINION_SECTION.search(urlsplit(url or "").path))
 
 
-def type_sentence(text: str, *, previous: dict | None = None, spoken: bool = False) -> dict:
+def caption_passage(text: str) -> bool:
+    """Whether a passage is a photo caption: it ends in an image credit, read on its last 120 characters."""
+    return bool(_CREDIT_TAIL.search(text.strip()[-120:]))
+
+
+def type_sentence(text: str, *, previous: dict | None = None, spoken: bool = False, caption: bool = False) -> dict:
     """Roles for one sentence and the named cues that produced them.
 
     `previous` is the typing of the sentence before it in the same paragraph: a sentence that
     opens with a quotation mark, or with "Instead" or "Put differently", inherits an opinion the
     previous sentence carried, because the attribution was made once for the run. `spoken` marks
     a sentence from a transcript or an opinion-section page, where every sentence is someone's
-    statement or argument.
+    statement or argument. `caption` marks a sentence from a passage that ends in an image credit,
+    where every sentence describes a picture.
     """
+    # Linked words still carry role cues. Keep the original prose-only observation
+    # checks: a linked headline or navigation label alone does not establish a finding.
+    parts, prose, cursor = [], [], 0
+    for link in inline_links(text):
+        parts.extend((text[cursor:link["start"]], link["label"]))
+        prose.extend((text[cursor:link["start"]], " "))
+        cursor = link["end"]
+    visible = _LINK.sub(" ", "".join(parts) + text[cursor:]).strip()
+    cue_prose = _LINK.sub(" ", "".join(prose) + text[cursor:]).strip()
     stripped = _LINK.sub(" ", text).strip()
     words = [word.lower() for word in _WORD.findall(stripped)]
     roles: list[str] = []
@@ -111,28 +133,31 @@ def type_sentence(text: str, *, previous: dict | None = None, spoken: bool = Fal
         add("instruction", "link_or_fragment")
     if words and words[0] in IMPERATIVES and not (len(words) > 1 and words[1] in AUXILIARIES):
         add("instruction", "imperative_opener")
-    if _NAVIGATION.search(text) or _ROLE_PREFIX.match(text.strip()):
+    if _NAVIGATION.search(text) or _NAVIGATION.search(visible) or _ROLE_PREFIX.match(text.strip()):
         add("instruction", "navigation_phrase")
     if _QUOTE.search(text) and _SPEECH.search(text):
         add("attributed_opinion", "quoted_speech")
-    if _OPINION.search(stripped):
+    if _OPINION.search(cue_prose) or _OPINION.search(visible):
         add("attributed_opinion", "opinion_marker")
-    if _STANCE.search(stripped):
+    if _STANCE.search(cue_prose) or _STANCE.search(visible):
         add("attributed_opinion", "first_person_stance")
     if spoken:
         add("attributed_opinion", "spoken_or_opinion_source")
+    if caption:
+        add("caption", "image_credit_tail")
     if previous and "attributed_opinion" in previous.get("roles", ()):
-        if stripped[:1] in "\"“":
+        if cue_prose[:1] in "\"“" or visible[:1] in "\"“":
             add("attributed_opinion", "quote_continues")
-        elif _CONTINUATION.match(stripped):
+        elif _CONTINUATION.match(cue_prose) or _CONTINUATION.match(visible):
             add("attributed_opinion", "opinion_continues")
-    if _FUTURE.search(stripped):
+    if _FUTURE.search(cue_prose) or _FUTURE.search(visible):
         add("forecast", "future_cue")
-    if _HYPOTHETICAL.search(stripped):
+    if _HYPOTHETICAL.search(cue_prose) or _HYPOTHETICAL.search(visible):
         add("hypothetical", "example_cue")
-    if _DEFINITION.search(stripped) or re.match(r"^about\s+\S", stripped, re.I):
+    if (_DEFINITION.search(cue_prose) or _DEFINITION.search(visible)
+            or re.match(r"^about\s+\S", cue_prose, re.I) or re.match(r"^about\s+\S", visible, re.I)):
         add("definition", "definition_cue")
-    if _PURPOSE.search(stripped):
+    if _PURPOSE.search(cue_prose) or _PURPOSE.search(visible):
         add("definition", "purpose_cue")
     question = stripped.endswith("?") or (words and words[0] in QUESTION_OPENERS)
     if question:
@@ -155,8 +180,9 @@ def annotate(reading: dict) -> list[dict]:
               for source in reading["sources"]}
     rows = []
     for passage in reading["passages"]:
-        previous = None
+        previous, caption = None, caption_passage(passage["text"])
         for unit in passage["units"]:
-            previous = type_sentence(unit["text"], previous=previous, spoken=spoken.get(passage["source_id"], False))
+            previous = type_sentence(unit["text"], previous=previous, spoken=spoken.get(passage["source_id"], False),
+                                     caption=caption)
             rows.append({"unit_id": unit["id"], **previous})
     return rows

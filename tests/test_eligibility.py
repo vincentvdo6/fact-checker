@@ -27,6 +27,13 @@ def roles(**overrides):
     return [{"unit_id": key, "roles": value} for key, value in base.items()]
 
 
+def test_a_caption_role_withholds_with_its_own_reason():
+    gate = gate_units(reading(), roles(**{"s1:p1:u1": ["reported_observation", "caption"]}))
+    first = gate["units"][0]
+    assert not first["eligible"] and first["withheld"] == "image caption or credit"
+    assert gate["withheld"]["image caption or credit"] == 1 and "caption" in CONTEXT_ROLES
+
+
 def test_context_roles_withhold_even_when_paired_with_an_observation():
     gate = gate_units(reading(), validate_roles(reading(), roles()))
     by_id = {unit["id"]: unit for unit in gate["units"]}
@@ -39,7 +46,7 @@ def test_context_roles_withhold_even_when_paired_with_an_observation():
     assert gate["withheld"] == {"attributed opinion": 1, "forecast or expectation": 1,
                                 "hypothetical or illustration": 1, "instruction or navigation text": 1,
                                 "definition without a reported observation": 2}
-    assert set(CONTEXT_ROLES) == {"attributed_opinion", "forecast", "hypothetical", "instruction"}
+    assert set(CONTEXT_ROLES) == {"attributed_opinion", "forecast", "hypothetical", "instruction", "caption"}
 
 
 def test_unknown_role_is_withheld_not_guessed():

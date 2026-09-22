@@ -17,7 +17,7 @@ from src.retrieval.visible_text import inline_links
 _LINE = re.compile(r"[^\n]+")
 
 ROLES = ("reported_observation", "definition", "hypothetical", "forecast",
-         "attributed_opinion", "instruction", "unknown")
+         "attributed_opinion", "instruction", "caption", "unknown")
 
 
 def _sentence_spans(text: str) -> list[tuple[int, int]]:
