@@ -364,6 +364,7 @@ def test_context_review_factory_uses_installed_model_and_allows_opt_out(monkeypa
     monkeypatch.setenv("FACT_CHECKER_CONCEPTS", "off")
     monkeypatch.setenv("FACT_CHECKER_WEB_SEARCH", "off")
     monkeypatch.setenv("FACT_CHECKER_DECOMPOSED", "on")
+    monkeypatch.setenv("FACT_CHECKER_CONTEXT_ORDERING", "off")
     monkeypatch.delenv("FACT_CHECKER_PAIR_JUDGE", raising=False)
     monkeypatch.delenv("FACT_CHECKER_CONTEXT_REVIEW", raising=False)
     processor = module.youtube_processor(SpeechMetadata())
@@ -376,6 +377,41 @@ def test_context_review_factory_uses_installed_model_and_allows_opt_out(monkeypa
     processor = module.youtube_processor(SpeechMetadata())
     assert processor.judge.root == primary
     assert processor.notes == ["Context review is off: the second local judge is not installed."]
+
+
+def test_context_ordering_factory_is_lazy_and_allows_opt_out(monkeypatch, tmp_path):
+    from src.pipeline import youtube as module
+    from src.pipeline.context import SpeechMetadata
+    from src.verdict.context_order import ContextOrderedJudge
+
+    primary, ranker = tmp_path / "primary", tmp_path / "ranker"
+    primary.mkdir()
+    ranker.mkdir()
+    (primary / "contract.json").write_text("{}")
+    for name in ("contract.json", "source-copy.json", "tokenizer.json", "ranker.onnx"):
+        (ranker / name).write_text("not loaded at construction")
+    monkeypatch.setattr("src.verdict.pair_judge.MODEL_DIR", primary)
+    monkeypatch.setattr("src.verdict.context_ranker.MODEL_DIR", ranker)
+    monkeypatch.setattr("src.verdict.pair_judge.PairJudge", lambda **kw: SimpleNamespace(root=kw["model_dir"]))
+    monkeypatch.setattr(module, "LiveProcessor", lambda metadata, **kw: SimpleNamespace(**kw))
+    for key in ("CONCEPTS", "CONTEXT_REVIEW", "WEB_SEARCH"):
+        monkeypatch.setenv("FACT_CHECKER_" + key, "off")
+    monkeypatch.setenv("FACT_CHECKER_DECOMPOSED", "on")
+    monkeypatch.delenv("FACT_CHECKER_PAIR_JUDGE", raising=False)
+    monkeypatch.delenv("FACT_CHECKER_CONTEXT_ORDERING", raising=False)
+    processor = module.youtube_processor(SpeechMetadata())
+    assert isinstance(processor.judge, ContextOrderedJudge)
+    assert processor.judge.primary.root == primary and processor.judge.scorer._session is None
+    monkeypatch.setenv("FACT_CHECKER_CONTEXT_ORDERING", "off")
+    assert module.youtube_processor(SpeechMetadata()).judge.root == primary
+    monkeypatch.setenv("FACT_CHECKER_CONTEXT_ORDERING", "on")
+    (ranker / "ranker.onnx").unlink()
+    processor = module.youtube_processor(SpeechMetadata())
+    assert processor.judge.root == primary
+    assert processor.notes == ["Context ordering is off: the local ranker is not installed."]
+    monkeypatch.setenv("FACT_CHECKER_CONTEXT_ORDERING", "sometimes")
+    with pytest.raises(ValueError, match="FACT_CHECKER_CONTEXT_ORDERING"):
+        module.youtube_processor(SpeechMetadata())
 
 
 def test_processor_factory_defaults_both_stages_on_and_reports_missing_artifacts(monkeypatch, tmp_path):

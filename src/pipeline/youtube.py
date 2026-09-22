@@ -166,6 +166,17 @@ def youtube_processor(metadata: SpeechMetadata) -> LiveProcessor:
                     judge = ContextReviewedJudge(judge, reviewer)
                 else:
                     notes.append("Context review is off: the second local judge is not installed.")
+            if _switch("FACT_CHECKER_CONTEXT_ORDERING"):
+                from src.verdict.context_order import ContextOrderedJudge
+                from src.verdict.context_ranker import CONTRACT_SHA256, LocalContextRanker
+                from src.verdict.context_ranker import MODEL_DIR as RANKER_DIR
+
+                if all((RANKER_DIR / name).is_file() for name in
+                       ("contract.json", "source-copy.json", "tokenizer.json", "ranker.onnx")):
+                    judge = ContextOrderedJudge(judge, LocalContextRanker(RANKER_DIR),
+                                                model=f"Qwen3-Reranker-0.6B FP32; contract {CONTRACT_SHA256}")
+                else:
+                    notes.append("Context ordering is off: the local ranker is not installed.")
         else:
             notes.append("Sentence-level reading is off: the pair judge is not installed.")
     return LiveProcessor(metadata, query_mode="topic", web=web, judge=judge, specificity=specificity, notes=notes)

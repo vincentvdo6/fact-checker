@@ -131,6 +131,33 @@ context and adds model loading and inference time. It uses another local model
 (about 739 MB on disk), without downloading one automatically; a missing model is
 reported in the check's notes. A model runtime error fails the check visibly.
 
+An optional local Qwen3 ranker orders the remaining contextual quotations after that
+review. It keeps the original assertion and source text, preserves every candidate,
+and cannot change the verdict or counted evidence. Its scores are ordering signals,
+not truth probabilities. It can still rank unrelated material highly; the feature
+does not establish that every displayed source is relevant.
+
+Install the validated full-precision bundle with:
+
+```powershell
+.venv\Scripts\python.exe -m scripts.install_context_ranker --bundle path\to\validated-bundle
+```
+
+The bundle is an experimental artifact, not downloaded automatically. It contains
+the pinned graph, external tensors, contract, manifest and tokenizer; the installer
+checks their hashes and refuses to replace an existing installation. Once present in
+`models/context_ranker`, ordering is enabled by default. Set
+`FACT_CHECKER_CONTEXT_ORDERING=off` to retain the previous order. Missing artifacts
+or an input that cannot fit in full retain that order, with a note in the saved
+check. Other runtime errors remain errors. Scores and actual runtime providers are
+recorded separately from the verdict judge's confidence.
+
+Windows requirements use ONNX Runtime DirectML for this ranker, with CPU fallback;
+the existing judges still use CPU. For an existing Windows environment, uninstall
+the old `onnxruntime` package before installing `requirements.txt`: it shares the
+same Python module with `onnxruntime-directml`. The ranker adds model loading,
+memory use and inference time. Reload the extension to start a fresh model host.
+
 Set `FACT_CHECKER_DECOMPOSED` to `off` to remove the reading, or
 `FACT_CHECKER_CONCEPTS` to `off` to skip caption-concept research. Each needs a local
 artifact -- the pair judge under `models/pair_judge` and the Wikipedia store for
