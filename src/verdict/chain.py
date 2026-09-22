@@ -76,5 +76,7 @@ def run_chain(packet: dict, annotations: list[dict], judge: Judge) -> dict:
     verdict = compose(assertions, gate, judgments, packet["sources"], packet.get("claim_scope"),
                       judge_measurement=getattr(judge, "measurement", None),
                       direction_measurement=getattr(judge, "direction_measurement", None))
+    if review := getattr(judge, "review_composed", None):
+        verdict = review(verdict, assertions, eligible)
     return {"claim": packet["claim"], "assertions": assertions, "gate": gate, "judgments": judgments,
             "verdict": verdict, "text": render(verdict, packet["claim"])}

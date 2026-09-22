@@ -82,6 +82,49 @@ def test_reviewed_context_leaves_the_card_but_counted_evidence_and_summary_stay(
     assert any(u["text"] == other for u in checked["gate"]["units"]), "withheld source text remains in the audit"
 
 
+@pytest.mark.parametrize("demotion", ["conflict", "period", "concept"])
+def test_composed_context_cannot_bypass_review_or_revive_discarded_counts(demotion):
+    claim = "Solar adoption reached 25% in 2024."
+    fact = "The survey found solar adoption reached 25% in 2024."
+    noise = "The rail operator carried six million passengers."
+    related = "The survey found solar adoption reached 24%."
+    if demotion == "period":
+        noise, related = "In 2023, " + noise, "In 2023, " + related
+    source = {"id": "s2", "url": "https://other.example/report", "published_at": "2024-06-01",
+              "excerpts": [] if demotion == "concept" else [noise, related],
+              "reading_passages": [noise, related] if demotion == "concept" else []}
+    plan = {"claim_scope": {"country": "US"}, "sources": [
+        {"id": "s1", "url": "https://example.org/report", "published_at": "2024-06-01", "excerpts": [fact]}, source]}
+    primary = Judge(lambda a, u: "states_negation" if u["text"] == related and demotion == "conflict" else "states")
+    primary.measurement = primary.direction_measurement = None
+    reviewer = Judge(lambda a, u: "unrelated" if u["text"] == noise else "states")
+    before = check_claim(claim, plan, primary)
+    after = check_claim(claim, plan, ContextReviewedJudge(primary, reviewer))
+    old, new = before["verdict"]["assertions"][0], after["verdict"]["assertions"][0]
+    assert before["judgments"] == after["judgments"], "raw primary counts stay available for inspection"
+    assert {k: v for k, v in old.items() if k != "relevant"} == {
+        k: v for k, v in new.items() if k not in {"relevant", "withheld_context"}}
+    assert [r["text"] for r in new["evidence"]] == [fact], "removing a conflicting row must not restore its opposite"
+    assert noise in before["text"] and noise not in after["text"] and related in after["text"]
+    assert before["verdict"]["summary"] == after["verdict"]["summary"] == "established"
+    assert len(reviewer.calls) == 1 and {u["text"] for u in reviewer.calls[0][1]} == {noise, related}
+    assert all(r["not_counted"] and r["relation"] == "bears_on" for r in new["relevant"])
+    assert new["relevant"][0]["context_review"]["relation"] == "states", "the review cannot promote context"
+    withheld, = new["withheld_context"]
+    assert withheld["text"] == noise and withheld["not_counted"]
+    assert withheld["context_review"]["relation"] == "unrelated"
+
+
+def test_no_demoted_context_does_not_repeat_review():
+    primary = Judge(lambda a, u: "bears_on")
+    primary.measurement = primary.direction_measurement = None
+    reviewer = Judge(lambda a, u: "bears_on")
+    plan = {"sources": [{"id": "s1", "url": "https://example.org", "excerpts": ["The rate increased 5%."]}]}
+    checked = check_claim("The rate increased 10%.", plan, ContextReviewedJudge(primary, reviewer))
+    assert len(reviewer.calls) == 1
+    assert len(checked["verdict"]["assertions"][0]["relevant"]) == 1
+
+
 @pytest.mark.parametrize("mode", ["missing", "duplicate", "wrong_assertion", "wrong_unit"])
 def test_misaligned_reviewer_results_cannot_hide_another_sentence(mode):
     primary = Judge(lambda a, u: "bears_on")
