@@ -5,6 +5,19 @@ The checker starts closed. Open the tab when needed and close it with × or Esca
 Chrome or Edge starts
 the Python model host when needed; no local website or audio listener is required.
 
+Before registering, check the local prerequisites from this checkout:
+
+```powershell
+.venv\Scripts\python.exe -m scripts.check_youtube_setup
+```
+
+Errors identify missing files or invalid settings to fix before checking a video.
+Warnings identify optional features that are unavailable or disabled. Use `--json`
+for a structured report; errors return a nonzero exit code. This check does not
+download anything, load models, change browser registration, or contact websites.
+It checks the selected news/offline configuration and local file inventory;
+passing does not establish model integrity, browser connectivity or accuracy.
+
 1. From the repository, register the local connection:
 
    ```powershell
@@ -21,8 +34,12 @@ the Python model host when needed; no local website or audio listener is require
 Visible **CC can stay off** and the transcript panel can stay closed. The checker
 requests available English subtitle data in the background when you check a claim.
 
-The first check loads the local models. Existing detector/verdict exports and the
-Wikipedia index must be installed in this repository. Reload the extension after
+The first check loads the local models. News checks need the claim detector;
+sentence-level reading also needs the pair judge and its calibration. The
+Wikipedia corpus enables optional caption-concept research. Offline checks
+additionally need the Wikipedia index and the offline verdict artifacts.
+The setup check reports missing prerequisites for the selected configuration.
+Reload the extension after
 editing its files, then refresh YouTube. Registration is per Windows user and tied
 to this checkout's path; rerun the installer after moving the repository.
 
