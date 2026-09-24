@@ -282,14 +282,16 @@ class WebResearch:
                     if window["context"]:
                         source["reading_context"] = list(dict.fromkeys([*source.get("reading_context", []), *window["context"]]))
                     if is_context:
-                        source["reading_passages"] = list(dict.fromkeys([*source.get("reading_passages", []), *excerpts]))[:9]
+                        # Each selected phrase keeps its bounded window even when phrases share one page.
+                        source["reading_passages"] = list(dict.fromkeys(
+                            [*source.get("reading_passages", []), *excerpts]))[:9 * len(context_research)]
                         source.setdefault("context_concepts", []).append(assertion["concept"])
                     else:
                         source["excerpts"] = list(dict.fromkeys([*source["excerpts"], *excerpts]))[:2]
                         # The sentence-level reading gets the page's paragraphs around every match, the same
-                        # reading concept pages get; the research card's excerpt is unchanged.
+                        # reading concept pages get; each assertion retains its own nine-paragraph allowance.
                         source["assertion_passages"] = list(dict.fromkeys(
-                            [*source.get("assertion_passages", []), *window["passages"]]))[:9]
+                            [*source.get("assertion_passages", []), *window["passages"]]))[:9 * len(plan["assertions"])]
                     if source["temporal_status"] != "later_publication" and source["id"] not in assertion["source_ids"]:
                         assertion["source_ids"].append(source["id"])
         sources = [{key: value for key, value in source.items() if key != "markdown"}
