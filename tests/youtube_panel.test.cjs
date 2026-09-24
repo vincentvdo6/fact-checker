@@ -538,18 +538,79 @@ test("sentence-level draft shows quoted sentences and its status without a verdi
   assert.doesNotMatch(content, /uw\.example/);
   assert.match(content, /finance\.yahoo\.com \(publication date unconfirmed\)/);
   assert.match(content, /Definition in the same paragraph: “Defined as the share of the labor force\.”/);
-  assert.match(content, /… and 2 more relevant sentences not shown\./);
-  assert.match(content, /1 relevant sentence already shown above\./);
+  assert.match(content, /… and 3 more relevant sentences not shown\./);
+  assert.doesNotMatch(content, /already shown above/);
   assert.doesNotMatch(content, /Its figure checks|Gives the claim’s figure/, "legacy arithmetic annotations cannot imply a shared measure");
   assert.doesNotMatch(content, /prnewswire\.com/, "a figure from a sentence the card does not quote is not cited");
-  assert.equal((content.match(/Wisconsin’s labor shortage is a major barrier/g) || []).length, 1);
+  assert.equal((content.match(/Wisconsin’s labor shortage is a major barrier/g) || []).length, 2);
   assert.match(content, /Read as context, never as evidence: 12 attributed opinion, 3 instruction or navigation text\./);
   assert.match(content, /it was wrong 10 of 18 times; a counted sentence is a lead to read, not a finding\./, "the judge's record sits on the card");
-  assert.equal((content.match(/Relevant sentence/g) || []).length, 6);
+  assert.equal((content.match(/Relevant sentence/g) || []).length, 5);
   assert.equal((content.match(/Found by caption-concept research, which does not resolve the claim\./g) || []).length, 1);
   assert.equal((content.match(/Dated to June 2022, outside the claim's stated period; shown, not counted\./g) || []).length, 1);
   assert.equal(descendants(app.root).some(element => element.tag === "img"), false);
   assert.doesNotMatch(content, /Supported|Contradicted\b/);
+  const citations = descendants(app.root).filter(element => element.tag === "a" && element.textContent === "Open source");
+  assert.deepEqual(citations.map(link => link.href), ["https://www.wpr.org/news/x", "https://www.wpr.org/news/x",
+    ...Array(5).fill("https://finance.yahoo.com/a")]);
+  assert.ok(citations.every(link => link.target === "_blank" && link.rel === "noopener noreferrer"));
+});
+
+test("invalid citation destinations stay as literal quotations without active links", async () => {
+  const urls = ["javascript:alert(1)", "data:text/html,hi", "http://example.org/report",
+    "https://user:password@example.org/report", "https://user@example.org/report", "not a URL"];
+  const app = fixture();
+  app.open();
+  app.reply(result([{text: "A factual claim.", result: {
+    status: "verified", outcome: "declined_web_review", verdict: null,
+    research: {assertions: [], gaps: [], errors: [], sources: []},
+    decomposed: {status: "draft", verdict: {relationship: "insufficient", summary: "unresolved", assertions: [{
+      text: "A factual claim.", status: "insufficient", evidence: [],
+      relevant: urls.map((url, index) => ({unit_id: `u${index}`, url, text: `Literal quotation ${index}.`, relation: "bears_on"})),
+    }]}},
+  }}]));
+  await flush();
+  assert.equal(descendants(app.root).filter(element => element.tag === "a").length, 0);
+  for (const index of urls.keys()) assert.ok(text(app.root).includes(`Literal quotation ${index}.`));
+});
+
+test("each assertion keeps its ranked citations and its own reading regardless of assertion order", async () => {
+  const quote = (unit_id, text) => ({unit_id, text, relation: "bears_on", qualifiers: [], definitions: [],
+    url: "https://example.org/hours", published_at: ""});
+  const shared = quote("hours", "The library and museum open on weekdays.");
+  const notices = Array.from({length: 7}, (_, i) => quote(`notice-${i}`, `Opening-hours notice ${i}.`));
+  const first = {id: "a1", text: "The library is open.", status: "supported",
+    evidence: [{...shared, relation: "states", qualifiers: ["weekdays"]}], relevant: notices.slice(0, 3)};
+  const second = {id: "a2", text: "The museum is open.", status: "insufficient", evidence: [],
+    relevant: [notices[2], {...shared, qualifiers: ["museum"]}, notices[0], ...notices.slice(3)]};
+  const original = JSON.stringify([first, second]);
+  let alone;
+  for (const assertions of [[second], [first, second], [second, first]]) {
+    const app = fixture();
+    app.open();
+    app.reply(result([{text: "The library is open. The museum is open.", result: {
+      status: "verified", outcome: "declined_web_review", verdict: null,
+      research: {assertions: [], gaps: [], errors: [], sources: []},
+      decomposed: {status: "draft", verdict: {relationship: "insufficient", summary: "unresolved", assertions}},
+    }}]));
+    await flush();
+    const heading = descendants(app.root).find(element => element.textContent.startsWith("“The museum is open.” is"));
+    const section = [];
+    for (let element = heading.nextElementSibling; element; element = element.nextElementSibling) {
+      if (element.textContent.startsWith("“The library is open.” is")) break;
+      section.push(element);
+    }
+    const quotes = section.filter(element => element.className === "evidence").map(text);
+    alone ??= quotes;
+    assert.deepEqual(quotes, alone, "earlier assertions cannot fill this assertion's slots with lower-ranked citations");
+    assert.equal(quotes.length, 6);
+    for (const [index, row] of second.relevant.slice(0, 6).entries()) assert.ok(quotes[index].includes(row.text));
+    assert.match(quotes[1], /Scope stated in the sentence: museum\./);
+    assert.doesNotMatch(quotes[1], /Scope stated in the sentence: weekdays\.|\[read as stating it\]/);
+    assert.match(section.map(text).join(" "), /1 more relevant sentences not shown/);
+    assert.doesNotMatch(section.map(text).join(" "), /already shown above|Opening-hours notice 6/);
+  }
+  assert.equal(JSON.stringify([first, second]), original);
 });
 
 test("a viewer-declared claim country travels with the check and is shown as supplied by the viewer", async () => {

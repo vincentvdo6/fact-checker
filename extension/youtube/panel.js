@@ -533,6 +533,17 @@
     } catch { return "unnamed source"; }
   }
 
+  function sourceLink(value, label) {
+    let url;
+    try { url = new URL(value); } catch { return null; }
+    if (url.protocol !== "https:" || url.username || url.password) return null;
+    const link = node("a", label);
+    link.href = url.href;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    return link;
+  }
+
   // A quoted sentence as a reader sees it: markdown link labels without their destinations and no
   // bare URLs. The record keeps the exact span; this mirrors display_text in src/verdict/span_render.py.
   function displayText(text) {
@@ -556,6 +567,8 @@
       entry.append(node("p", "Found by caption-concept research, which does not resolve the claim.", "reason"));
     else if (row.not_counted && !row.period?.length)
       entry.append(node("p", `Shown, not counted: ${row.not_counted}.`, "reason"));
+    const link = sourceLink(row.url, "Open source");
+    if (link) entry.append(link);
     return entry;
   }
 
@@ -570,25 +583,21 @@
     for (const note of verdict.scope_notes || []) card.append(node("p", note, "reason"));
     if (verdict.judge_note) card.append(node("p", verdict.judge_note, "reason"));
 
-    // A sentence quoted under one half of a contrast is not quoted again under the next; the
-    // verdict data keeps every row, the card counts the repeats.
-    const shown = new Set();
     for (const assertion of verdict.assertions || []) {
       const limits = assertion.limits?.length ? `: ${assertion.limits.join("; ")}` : "";
       // An established assertion names the dated source it rests on, so one source is never read as many.
       const basis = assertion.basis ? ` (${assertion.basis})` : "";
       card.append(node("p", `“${assertion.text}” is ${DRAFT_STATUS[assertion.status] || assertion.status}${basis}${limits}.`));
-      const fresh = (assertion.relevant || []).filter(row => !shown.has(row.unit_id)).slice(0, MAX_RELEVANT);
+      // Rank and scope belong to this assertion; earlier quotations cannot replace its best rows.
+      const selected = (assertion.relevant || []).slice(0, MAX_RELEVANT);
       if (assertion.evidence?.length) {
         card.append(node("p", "Counted:", "reason"));
-        for (const row of assertion.evidence) { card.append(draftRow(row)); shown.add(row.unit_id); }
+        for (const row of assertion.evidence) card.append(draftRow(row));
       }
-      if (fresh.length) card.append(node("p", "Relevant, not counted:", "reason"));
+      if (selected.length) card.append(node("p", "Relevant, not counted:", "reason"));
       if (assertion.relevant?.length) {
-        const repeated = assertion.relevant.filter(row => shown.has(row.unit_id)).length;
-        for (const row of fresh) { card.append(draftRow(row)); shown.add(row.unit_id); }
-        if (repeated) card.append(node("p", `${repeated} relevant sentence${repeated === 1 ? "" : "s"} already shown above.`, "reason"));
-        const more = assertion.relevant.length - repeated - fresh.length;
+        for (const row of selected) card.append(draftRow(row));
+        const more = assertion.relevant.length - selected.length;
         if (more > 0) card.append(node("p", `… and ${more} more relevant sentences not shown.`, "reason"));
       }
       if (!assertion.evidence?.length && !assertion.relevant?.length)
@@ -614,14 +623,9 @@
     const details = node("details");
     details.append(node("summary", "Inspect web sources"));
     for (const source of research.sources || []) {
-      let url;
-      try { url = new URL(source.url); } catch { continue; }
-      if (url.protocol !== "https:" || url.username || url.password) continue;
+      const link = sourceLink(source.url, `${source.id}: ${source.title}`);
+      if (!link) continue;
       const entry = node("div", undefined, "evidence");
-      const link = node("a", `${source.id}: ${source.title}`);
-      link.href = url.href;
-      link.target = "_blank";
-      link.rel = "noopener noreferrer";
       entry.append(link, node("p", source.role, "reason"));
       if (source.source_context)
         entry.append(node("p", source.source_context, "excerpt"));

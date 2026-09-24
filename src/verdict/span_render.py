@@ -89,7 +89,6 @@ def render(verdict: dict, claim: str) -> str:
     lines.extend(f"Scope: {note}" for note in verdict.get("scope_notes", []))
     if verdict.get("judge_note"):
         lines.append(f"Reliability: {verdict['judge_note']}")
-    shown: set[str] = set()      # a sentence quoted under one half of a contrast is not quoted again
     rendered: list[dict] = []    # every row the page quotes; the only sentences a figure may be grounded in
     for row in verdict["assertions"]:
         lines.append("")
@@ -99,24 +98,21 @@ def render(verdict: dict, claim: str) -> str:
         if stray_dates := set(_DATE.findall(basis)) - {item["published_at"] for item in row["evidence"]}:
             raise ValueError(f"Basis names a publication date no counted sentence carries: {sorted(stray_dates)}")
         lines.append(f"\"{row['text']}\" is {STATUS_TEXT[row['status']]}{basis}{limits}.")
-        fresh = [item for item in row["relevant"] if item["unit_id"] not in shown][:MAX_RELEVANT]
+        # Rank and scope belong to this assertion; earlier quotations cannot replace its best rows.
+        selected = row["relevant"][:MAX_RELEVANT]
         if row["evidence"]:
             lines.append("  Counted:")
             for item in row["evidence"]:
                 lines.extend(_row(item))
-        if fresh:
+        if selected:
             lines.append("  Relevant, not counted:")
-            for item in fresh:
+            for item in selected:
                 lines.extend(_row(item))
-        if row["relevant"]:
-            if repeated := sum(item["unit_id"] in shown for item in row["relevant"]):
-                lines.append(f"    {repeated} relevant sentence{'s' if repeated != 1 else ''} already shown above.")
-            if (more := len(row["relevant"]) - repeated - len(fresh)) > 0:
-                lines.append(f"    ... and {more} more relevant sentences not shown.")
+        if (more := len(row["relevant"]) - len(selected)) > 0:
+            lines.append(f"    ... and {more} more relevant sentences not shown.")
         if not row["evidence"] and not row["relevant"]:
             lines.append(f"  No eligible sentence addresses it ({row['judged']} of {row['eligible']} judged).")
-        rendered.extend(row["evidence"] + fresh)
-        shown.update(item["unit_id"] for item in row["evidence"] + fresh)
+        rendered.extend(row["evidence"] + selected)
     if verdict["withheld"]:
         withheld = ", ".join(f"{count} {reason}" for reason, count in sorted(verdict["withheld"].items()))
         lines.append("")

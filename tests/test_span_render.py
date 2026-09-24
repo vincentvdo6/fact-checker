@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
+
 import pytest
 
 from src.verdict.span_render import figures, render, ungrounded_figures
@@ -101,25 +103,27 @@ def test_link_labels_are_shown_without_destinations_and_figures_stay_grounded():
         render(verdict(assertions=[unquoted]), CLAIM)
 
 
-def test_a_sentence_quoted_under_one_half_is_counted_not_requoted_under_the_next():
-    def rows(start, stop):
-        return [evidence("bears_on", f"Sentence number {index} about jobs.") | {"unit_id": f"s1:p1:u{index}"}
-                for index in range(start, stop)]
-
-    both = verdict()
-    both["assertions"][0]["relevant"] = rows(1, 4)
-    both["assertions"][1]["relevant"] = [both["assertions"][0]["evidence"][0], *rows(1, 12)]   # one counted, three shown, eight fresh
-    text = render(both, CLAIM)
-    first, second = text.split("\"We have a good job shortage.\"")
-    assert first.count("Sentence number") == 3
-    assert second.count("Sentence number") == 6 and "4 relevant sentences already shown above." in second
-    assert "... and 2 more relevant sentences not shown." in second
-    assert "Sentence number 4 about jobs." in second and "Sentence number 1 about jobs." not in second
-    assert second.count("Wisconsin's labor shortage") == 0 and first.count("Wisconsin's labor shortage") == 1
-    assert len(both["assertions"][1]["relevant"]) == 12
-    single = render(verdict(assertions=[verdict()["assertions"][1] | {"relevant": rows(0, 2)}] * 2), CLAIM)
-    assert "2 relevant sentences already shown above." in single and single.count("Sentence number") == 2
-    assert single.count("Relevant, not counted:") == 1, "no empty heading under the half whose sentences were all shown above"
+def test_each_assertion_keeps_its_ranked_citations_and_its_own_reading():
+    shared = evidence("states", "The library and museum open on weekdays.", ["weekdays"]) | {"definitions": []}
+    rows = [evidence("bears_on", f"Opening-hours notice {index}.") | {"definitions": []} for index in range(7)]
+    base = verdict()["assertions"][1]
+    first = base | {"id": "assertion-1", "text": "The library is open.", "evidence": [shared], "relevant": rows[:3]}
+    second = base | {"id": "assertion-2", "text": "The museum is open.", "relevant": [
+        rows[2], shared | {"relation": "bears_on", "qualifiers": ["museum"]}, rows[0], *rows[3:]]}
+    original = deepcopy([first, second])
+    claim = "The library is open. The museum is open."
+    alone = render(verdict(assertions=[second], withheld={}), claim).split('\n\n')[1]
+    for assertions in ([first, second], [second, first]):
+        text = render(verdict(assertions=assertions, withheld={}), claim)
+        section = next(part for part in text.split('\n\n') if part.startswith('"The museum'))
+        assert section == alone, "earlier assertions must not replace a higher-ranked citation with a lower-ranked one"
+        assert section.count('  - ') == 6
+        assert section.index(rows[2]["text"]) < section.index(shared["text"]) < section.index(rows[0]["text"])
+        assert "Scope stated in the sentence: museum." in section
+        assert "Scope stated in the sentence: weekdays." not in section and "[read as stating it]" not in section
+        assert rows[-1]["text"] not in section and "1 more relevant sentences not shown." in section
+        assert "already shown above" not in text
+    assert [first, second] == original
 
 
 def test_legacy_arithmetic_annotations_cannot_be_rendered_as_confirmation():
