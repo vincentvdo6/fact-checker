@@ -28,6 +28,10 @@ class ContextOrderedJudge:
     def __call__(self, assertions: list[dict], units: list[dict]) -> list[dict]:
         return self.primary(assertions, units)
 
+    @property
+    def last_input_overflows(self) -> list[dict]:
+        return getattr(self.primary, "last_input_overflows", [])
+
     def review_composed(self, verdict: dict, assertions: list[dict], units: list[dict]) -> dict:
         review = getattr(self.primary, "review_composed", None)
         return review(verdict, assertions, units) if review else verdict

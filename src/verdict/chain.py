@@ -80,5 +80,9 @@ def run_chain(packet: dict, annotations: list[dict], judge: Judge) -> dict:
         verdict = review(verdict, assertions, eligible)
     if order := getattr(judge, "order_context", None):
         verdict = order(verdict, assertions, eligible)
+    overflows = [dict(row) for row in getattr(judge, "last_input_overflows", [])]
+    if overflows:
+        verdict = verdict | {"input_overflows": overflows, "scope_limits": [*verdict["scope_limits"],
+            "Some sentence comparisons exceeded the model's input limit and were not judged; source text was not shortened."]}
     return {"claim": packet["claim"], "assertions": assertions, "gate": gate, "judgments": judgments,
             "verdict": verdict, "text": render(verdict, packet["claim"])}

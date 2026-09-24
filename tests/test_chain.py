@@ -27,7 +27,39 @@ PLAN = {"context": "captions", "search_cutoff": "2025-06-01", "claim_scope": {"c
 
 def states_everything(assertions, units):
     return [{"assertion_id": assertion["id"], "unit_id": unit["id"], "relation": "states", "span": unit["text"],
-             "qualifiers": [], "confidence": 0.9} for assertion in assertions for unit in units]
+                 "qualifiers": [], "confidence": 0.9} for assertion in assertions for unit in units]
+
+
+def test_input_limit_abstentions_survive_the_wrappers_and_are_visible_without_false_relations():
+    from src.verdict.context_order import ContextOrderedJudge
+    from src.verdict.context_review import ContextReviewedJudge
+
+    class LimitedJudge:
+        measurement = direction_measurement = None
+
+        def __call__(self, assertions, units):
+            self.last_input_overflows = [{"assertion_id": a["id"], "unit_id": u["id"],
+                                          "reason": "input_over_limit", "input_tokens": 193, "max_input_tokens": 192}
+                                         for a in assertions for u in units]
+            return []
+
+    def unused(*args):
+        raise AssertionError("No remaining candidate requires review or ranking")
+
+    source = "The council reported a rise in library visits."
+    plan = {"sources": [{"id": "s1", "url": "https://example.org/report", "excerpts": [source]}]}
+    judge = ContextOrderedJudge(ContextReviewedJudge(LimitedJudge(), unused), unused, model="fixture")
+    result = check_claim("Library visits rose.", plan, judge)
+    assert result["judgments"] == []
+    assertion = result["verdict"]["assertions"][0]
+    assert assertion["judged"] == 0 and assertion["eligible"] == 1
+    assert assertion["evidence"] == assertion["relevant"] == []
+    assert result["verdict"]["input_overflows"][0]["stage"] == "primary"
+    assert "exceeded the model's input limit" in result["text"]
+    assert result["gate"]["units"][0]["text"] == source
+    following = check_claim("Library visits rose.", {"sources": []}, judge)
+    assert "input_overflows" not in following["verdict"]
+    assert "exceeded the model's input limit" not in following["text"]
 
 
 def test_the_live_judge_receives_a_complete_sentence_with_its_citation_intact():

@@ -56,6 +56,74 @@ def test_no_context_does_not_load_or_call_the_second_model():
     assert reviewer.calls == []
 
 
+def test_oversized_review_retains_primary_context_without_inventing_a_second_reading():
+    class LimitedReviewer(Judge):
+        def __call__(self, assertions, units):
+            self.last_input_overflows = [{"assertion_id": a["id"], "unit_id": u["id"],
+                                          "reason": "input_over_limit", "input_tokens": 257, "max_input_tokens": 256}
+                                         for a in assertions for u in units]
+            return []
+
+    primary = Judge(lambda a, u: "bears_on")
+    judge = ContextReviewedJudge(primary, LimitedReviewer(lambda a, u: pytest.fail("no model reading")))
+    assertions = [{"id": "a1"}, {"id": "a2"}]
+    units = [{"id": "u1", "text": "Complete source text."}]
+    baseline = primary(assertions, units)
+    rows = judge(assertions, units)
+    assert [{k: v for k, v in row.items() if k != "context_review"} for row in rows] == baseline
+    assert all(row["context_review"]["status"] == "not_judged" for row in rows)
+    assert all("confidence" not in row["context_review"] and "relation" not in row["context_review"] for row in rows)
+    assert [row["assertion_id"] for row in judge.last_input_overflows] == ["a1", "a2"]
+    assert all(row["stage"] == "context_review" for row in judge.last_input_overflows)
+    assert judge([], []) == [] and judge.last_input_overflows == [], "no stale warning on another claim"
+
+
+@pytest.mark.parametrize("demoted", [False, True])
+def test_unfinished_context_review_is_preserved_through_composition_and_ordering(demoted):
+    from src.verdict.context_order import ContextOrderedJudge
+
+    class LimitedReviewer(Judge):
+        def __call__(self, assertions, units):
+            self.last_input_overflows = [{"assertion_id": a["id"], "unit_id": u["id"],
+                                          "reason": "input_over_limit", "input_tokens": 257, "max_input_tokens": 256}
+                                         for a in assertions for u in units if u["text"].startswith("The council")]
+            return super().__call__(assertions, [u for u in units if not u["text"].startswith("The council")])
+
+    primary = Judge(lambda a, u: "states" if demoted else "bears_on")
+    primary.measurement = primary.direction_measurement = None
+    reviewer = LimitedReviewer(lambda a, u: "unrelated")
+    judge = ContextOrderedJudge(ContextReviewedJudge(primary, reviewer), lambda rows: [0.5] * len(rows), model="fixture")
+    text = "The council reported rising library visits. The railway carried more passengers."
+    source = {"id": "s1", "url": "https://example.org/report", "excerpts": [] if demoted else [text]}
+    if demoted:
+        source["reading_passages"] = [text]
+    result = check_claim("Library visits rose.", {"sources": [source]}, judge)
+    assertion = result["verdict"]["assertions"][0]
+    assert assertion["evidence"] == [] and assertion["status"] == "insufficient"
+    row, = assertion["relevant"]
+    assert row["text"].startswith("The council")
+    assert row["context_review"]["status"] == "not_judged"
+    assert "confidence" not in row["context_review"] and "relation" not in row["context_review"]
+    assert row["context_relevance_score"] == 0.5
+    assert len(result["verdict"]["input_overflows"]) == 1
+    assert "exceeded the model's input limit" in result["text"]
+
+
+@pytest.mark.parametrize("fault", ["missing", "foreign", "duplicate", "read_and_skipped"])
+def test_review_overflow_cannot_hide_missing_repeated_or_unrequested_pairs(fault):
+    class BrokenReviewer(Judge):
+        def __call__(self, assertions, units):
+            rows = super().__call__(assertions, units)
+            overflow = {"assertion_id": "a", "unit_id": "u", "reason": "input_over_limit"}
+            self.last_input_overflows = {"missing": [], "foreign": [overflow | {"unit_id": "foreign"}],
+                                         "duplicate": [overflow, overflow], "read_and_skipped": [overflow]}[fault]
+            return rows if fault == "read_and_skipped" else []
+
+    judge = ContextReviewedJudge(Judge(lambda a, u: "bears_on"), BrokenReviewer(lambda a, u: "unrelated"))
+    with pytest.raises(ValueError, match="exactly the requested"):
+        judge([{"id": "a"}], [{"id": "u", "text": "A complete observation."}])
+
+
 def test_reviewer_failure_is_reported_instead_of_silently_removing_evidence():
     primary = Judge(lambda a, u: "bears_on")
 

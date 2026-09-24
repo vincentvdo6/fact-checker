@@ -43,6 +43,12 @@ def contract(tmp_path, **overrides):
     return tmp_path
 
 
+def fake_tokenizer(premises, hypotheses, *, padding, truncation):
+    assert not padding and not truncation
+    return {"input_ids": [[0] * (len(premise.split()) + len(hypothesis.split()) + 3)
+                          for premise, hypothesis in zip(premises, hypotheses, strict=True)]}
+
+
 def test_pair_judge_refuses_a_permuted_label_order_or_other_template(tmp_path):
     judge = PairJudge(model_dir=contract(tmp_path))
     assert judge.max_length == 192 and judge.calibrator is None and judge.bands is None
@@ -57,6 +63,7 @@ def test_hedge_probe_judges_the_sentence_figure_in_the_claims_place_and_records_
     import numpy as np
 
     judge = PairJudge(model_dir=contract(tmp_path), probe_hedges=True, probe_negation=True)
+    judge._tokenizer = fake_tokenizer
     seen = []
 
     def probabilities(pairs):
@@ -80,6 +87,7 @@ def test_hedge_probe_judges_the_sentence_figure_in_the_claims_place_and_records_
     assert denial["judged_text"] == "We have around 24.3% of the population out of work.", "positive form, then the hedge"
     assert denial["relation"] == "states_negation" and denial["raw_label"] == "states"
     plain = PairJudge(model_dir=contract(tmp_path))
+    plain._tokenizer = fake_tokenizer
     monkeypatch.setattr(plain, "probabilities", probabilities)
     assert all("figures_read" not in row and row["judged_text"] == "That's around 25% of the population."
                for row in plain(assertions[:1], units))
@@ -89,6 +97,7 @@ def test_hedge_probe_preserves_population_claim_against_a_relative_risk(tmp_path
     import numpy as np
 
     judge = PairJudge(model_dir=contract(tmp_path), probe_hedges=True)
+    judge._tokenizer = fake_tokenizer
     claim = "That's around 25% of the population."
     sentence = "Formerly incarcerated people are 24% [less likely](https://example.org/report) to return to prison."
     seen = []

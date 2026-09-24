@@ -9,6 +9,9 @@ those predictions; below that the sentence is shown as `bears_on` and never coun
 raw label stays on the judgment for inspection. `bears_on` and `unrelated` are never
 gated, since neither moves a verdict. The judge reads one sentence with its
 own-paragraph definitions against one assertion and returns no prose.
+Pairs exceeding the contract's token limit are omitted with a separate per-call
+audit, not labelled unrelated. Neither the claim nor its source context is clipped.
+Direct logits calls reject oversized inputs instead of producing partial readings.
 """
 
 from __future__ import annotations
@@ -64,6 +67,7 @@ class PairJudge:
         self.direction_measurement = json.loads(direction.read_text(encoding="utf-8")) if direction.exists() else None
         self._session = None
         self._tokenizer = None
+        self.last_input_overflows: list[dict] = []
 
     @property
     def session(self):
@@ -86,14 +90,25 @@ class PairJudge:
         return self._tokenizer
 
     def logits(self, pairs: list[tuple[str, str]]) -> np.ndarray:
+        lengths = self._token_lengths(pairs)
+        if any(length > self.max_length for length in lengths):
+            raise ValueError("A complete pair-judge input exceeds the token limit; no input was truncated.")
         rows = []
         for start in range(0, len(pairs), BATCH):
             chunk = pairs[start:start + BATCH]
             encoded = self.tokenizer([premise for premise, _ in chunk], [hypothesis for _, hypothesis in chunk],
-                                     padding=True, truncation=True, max_length=self.max_length, return_tensors="np")
+                                     padding=True, truncation=False, return_tensors="np")
             rows.append(self.session.run(None, {"input_ids": encoded["input_ids"].astype(np.int64),
                                                 "attention_mask": encoded["attention_mask"].astype(np.int64)})[0])
         return np.concatenate(rows).astype(np.float64) if rows else np.zeros((0, len(RELATIONS)))
+
+    def _token_lengths(self, pairs: list[tuple[str, str]]) -> list[int]:
+        """Count the actual paired template, including special tokens, without clipping either text."""
+        if not pairs:
+            return []
+        encoded = self.tokenizer([premise for premise, _ in pairs], [hypothesis for _, hypothesis in pairs],
+                                 padding=False, truncation=False)
+        return [len(ids) for ids in encoded["input_ids"]]
 
     def probabilities(self, pairs: list[tuple[str, str]]) -> np.ndarray:
         logits = self.logits(pairs)
@@ -114,6 +129,7 @@ class PairJudge:
         return " ".join([unit["text"], *(item["text"] for item in unit.get("definitions", []))])
 
     def __call__(self, assertions: list[dict], units: list[dict]) -> list[dict]:
+        self.last_input_overflows = []
         pairs, keys = [], []
         for assertion in assertions:
             positive = positive_form(assertion["text"]) if self.probe_negation and assertion["negated"] else None
@@ -126,8 +142,20 @@ class PairJudge:
                 keys.append((assertion, unit, positive is not None, judged, figures))
         if not pairs:
             return []
+        lengths = self._token_lengths(pairs)
+        valid = [index for index, length in enumerate(lengths) if length <= self.max_length]
+        probabilities = self.probabilities([pairs[index] for index in valid]) if valid else ()
+        if len(probabilities) != len(valid):
+            raise ValueError("Pair-judge predictions do not match the number of fitting pairs.")
+        scored = iter(probabilities)
         judgments = []
-        for (assertion, unit, inverted, judged, figures), row in zip(keys, self.probabilities(pairs), strict=True):
+        for (assertion, unit, inverted, judged, figures), length in zip(keys, lengths, strict=True):
+            if length > self.max_length:
+                self.last_input_overflows.append({"assertion_id": assertion["id"], "unit_id": unit["id"],
+                                                  "reason": "input_over_limit", "input_tokens": length,
+                                                  "max_input_tokens": self.max_length})
+                continue
+            row = next(scored)
             index = int(np.argmax(row))
             raw = RELATIONS[index]
             relation = INVERTED.get(raw, raw) if inverted else raw
