@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import struct
 import sys
 from datetime import datetime, timezone
@@ -26,11 +27,26 @@ def record_click(directory: Path, payload: dict, result: dict) -> Path:
     """One file per click, named by time and video, holding exactly what was sent and returned."""
     directory.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H%M%SZ")
-    video = str(result.get("video_id") or payload.get("video_id") or "unknown")[:11]
-    path = directory / f"click-{stamp}-{video}.json"
-    path.write_text(json.dumps({"recorded_at": stamp, "payload": payload, "result": result}, indent=1, ensure_ascii=False),
-                    encoding="utf-8")
-    return path
+    candidate = result.get("video_id") or payload.get("video_id")
+    video = candidate if isinstance(candidate, str) and re.fullmatch(r"[A-Za-z0-9_-]{11}", candidate) else "unknown"
+    content = json.dumps({"recorded_at": stamp, "payload": payload, "result": result},
+                         indent=1, ensure_ascii=False, allow_nan=False).encode("utf-8")
+    for number in range(1000):
+        suffix = f"-{number}" if number else ""
+        path = directory / f"click-{stamp}-{video}{suffix}.json"
+        created = False
+        try:
+            with path.open("xb") as handle:
+                created = True
+                handle.write(content)
+            return path
+        except FileExistsError:
+            continue
+        except OSError:
+            if created:
+                path.unlink(missing_ok=True)
+            raise
+    raise OSError("Too many clicks recorded in one second.")
 
 
 def read_exact(stream: BinaryIO, length: int) -> bytes:
@@ -78,20 +94,23 @@ def serve(incoming: BinaryIO, outgoing: BinaryIO, checker: YouTubeChecker, recor
             try:
                 payload = message.get("payload", {})
                 result = checker.check(payload)
-                if record_dir is not None:
-                    try:
-                        record_click(record_dir, payload, result)
-                    except OSError as error:      # a full or read-only disk must not fail the check itself
-                        print(f"click not recorded: {error}", file=sys.stderr)
                 response = {"id": request_id, "result": result}
             except (Exception, SystemExit) as error:
                 response = {"id": request_id, "error": str(error)}
+            recordable = False
             try:
                 frame = encode_message(response)
             except (TypeError, ValueError):
                 frame = encode_message({"id": request_id, "error": "The check response could not be encoded within the native message limit."})
+            else:
+                recordable = "result" in response
             outgoing.write(frame)
             outgoing.flush()
+            if record_dir is not None and recordable:
+                try:
+                    record_click(record_dir, payload, result)
+                except (OSError, TypeError, ValueError) as error:
+                    print(f"click not recorded: {error}", file=sys.stderr)
     finally:
         checker.close()
 
