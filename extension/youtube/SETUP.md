@@ -165,13 +165,16 @@ phrase specificity -- and a missing one is reported on the card, not raised.
 
 ## Collecting clicks for labelling
 
-The pair judge's error rate on news pages is unmeasured, and the only way to measure it
-is on the sentences real clicks retrieve, read by a person. Set `FACT_CHECKER_RECORD_CLICKS`
-to a directory (the repository's `runs/clicks`, by absolute path, is gitignored) in the
-Windows user environment, fully exit and restart the browser, and every check writes
-`click-<time>-<video>.json` there -- the caption payload and the complete result, nothing
-else, on this machine only. A failed write is printed to the host's stderr and never fails
-the check. Remove the variable to stop recording.
+Record checks explicitly through the native host installer:
+
+    .venv\Scripts\python.exe -m scripts.install_youtube_extension --record
+
+Reload the extension to use the updated launcher. Checks are saved in the ignored
+`runs/clicks` directory as `click-<time>-<video>.json`, containing the caption payload
+and complete result. Use `--record DIR` for a different location. Recording failures
+are logged to the host's stderr without failing the check. Run the installer with
+`--no-record` (or no recording flag), then reload the extension, to stop recording.
+The launcher clears inherited recording settings so recording stays opt-in.
 
 Aim for ten to twenty clicks on different videos and topics -- economics, crime, health,
 foreign affairs, sport, whatever you watch -- with **Claims are about** set, since that

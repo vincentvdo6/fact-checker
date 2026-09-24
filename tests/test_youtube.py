@@ -539,3 +539,19 @@ def test_clicks_are_recorded_only_when_a_directory_is_given_and_a_failed_write_n
     outgoing.seek(0)
     assert read_message(outgoing)["result"]["video_id"] == "abcdefghijk", "the check still answers"
     assert "click not recorded" in capsys.readouterr().err
+
+
+def test_the_host_launcher_bakes_in_the_record_directory_only_when_asked():
+    from pathlib import Path
+
+    from scripts.install_youtube_extension import launcher_text
+
+    plain = launcher_text(Path(r"C:\\work\\repo"), Path(r"C:\\work\\repo\\.venv\\Scripts\\python.exe"), None)
+    assert 'set "FACT_CHECKER_RECORD_CLICKS="' in plain and plain.endswith('-m scripts.youtube_host\n')
+    recording = launcher_text(Path(r"C:\\work\\repo"), Path(r"C:\\work\\repo\\.venv\\Scripts\\python.exe"),
+                              Path(r"C:\\work\\repo\\runs\\clicks"))
+    lines = recording.splitlines()
+    assert 'set "FACT_CHECKER_RECORD_CLICKS=C:\\work\\repo\\runs\\clicks"' in lines
+    assert lines.index('set "FACT_CHECKER_RECORD_CLICKS=C:\\work\\repo\\runs\\clicks"') < lines.index('cd /d "C:\\work\\repo" || exit /b 1')
+    percent = launcher_text(Path(r"C:\\100%\\repo"), Path(r"C:\\100%\\repo\\python.exe"), Path(r"C:\\100%\\repo\\runs\\clicks"))
+    assert "C:\\100%%\\repo\\runs\\clicks" in percent, "percent signs are escaped for batch"
