@@ -542,16 +542,18 @@ def test_clicks_are_recorded_only_when_a_directory_is_given_and_a_failed_write_n
 
 
 def test_the_host_launcher_bakes_in_the_record_directory_only_when_asked():
-    from pathlib import Path
+    from pathlib import PureWindowsPath
 
     from scripts.install_youtube_extension import launcher_text
 
-    plain = launcher_text(Path(r"C:\\work\\repo"), Path(r"C:\\work\\repo\\.venv\\Scripts\\python.exe"), None)
+    workspace = PureWindowsPath(r"C:\work\repo")
+    executable = workspace / ".venv/Scripts/python.exe"
+    plain = launcher_text(workspace, executable, None)
     assert 'set "FACT_CHECKER_RECORD_CLICKS="' in plain and plain.endswith('-m scripts.youtube_host\n')
-    recording = launcher_text(Path(r"C:\\work\\repo"), Path(r"C:\\work\\repo\\.venv\\Scripts\\python.exe"),
-                              Path(r"C:\\work\\repo\\runs\\clicks"))
+    recording = launcher_text(workspace, executable, workspace / "runs/clicks")
     lines = recording.splitlines()
     assert 'set "FACT_CHECKER_RECORD_CLICKS=C:\\work\\repo\\runs\\clicks"' in lines
     assert lines.index('set "FACT_CHECKER_RECORD_CLICKS=C:\\work\\repo\\runs\\clicks"') < lines.index('cd /d "C:\\work\\repo" || exit /b 1')
-    percent = launcher_text(Path(r"C:\\100%\\repo"), Path(r"C:\\100%\\repo\\python.exe"), Path(r"C:\\100%\\repo\\runs\\clicks"))
+    workspace = PureWindowsPath(r"C:\100%\repo")
+    percent = launcher_text(workspace, workspace / "python.exe", workspace / "runs/clicks")
     assert "C:\\100%%\\repo\\runs\\clicks" in percent, "percent signs are escaped for batch"
