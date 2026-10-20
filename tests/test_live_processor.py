@@ -204,3 +204,103 @@ def test_decomposed_draft_is_attached_only_with_a_judge_and_never_as_a_verdict(m
     instance.judge, instance.notes = None, ["Sentence-level reading is off: the pair judge is not installed."]
     result = instance.process(context())
     assert "decomposed" not in result and result["notes"] == instance.notes
+
+
+def test_batch_research_uses_shared_web_deadline_before_local_judging(monkeypatch):
+    instance = processor(True)
+    instance.query_mode = "topic"
+    events = []
+    clock = {"now": 0}
+
+    def review(item, _metadata):
+        events.append(("web", item.claim.text))
+        clock["now"] += 10
+        return {"sources": [item.claim.text] if clock["now"] <= 45 else [],
+                "errors": [] if clock["now"] <= 45 else ["shared deadline expired"]}
+
+    def judge(claim, research, _model):
+        events.append(("judge", claim))
+        clock["now"] += 40
+        return {"research_sources": research["sources"]}
+
+    instance.web = SimpleNamespace(always_search=True, review=review)
+    instance.judge = object()
+    monkeypatch.setattr("src.pipeline.live_processor.check_claim", judge)
+    contexts = [ClaimContext(TranscriptUpdate(str(index), 0, text, 0, 1, True), ())
+                for index, text in enumerate(("Latest jobs rose.", "Earlier wages rose.", "Oldest rates rose."))]
+    results = instance.process_many(contexts, max_claims=3)
+    assert events == [("web", item.claim.text) for item in contexts] + [
+        ("judge", item.claim.text) for item in contexts]
+    assert [result["decomposed"]["research_sources"] for result in results] == [
+        [item.claim.text] for item in contexts]
+    assert clock["now"] == 150
+
+
+def test_batch_research_preserves_complete_standalone_results_and_errors(monkeypatch):
+    monkeypatch.setattr("src.pipeline.live_processor.check_claim",
+                        lambda claim, review, _judge: {"claim": claim, "review": review})
+    contexts = [ClaimContext(TranscriptUpdate(str(index), 0, text, 0, 1, True), ())
+                for index, text in enumerate(("Jobs rose.", "Wages rose."))]
+
+    def make_processor():
+        instance = processor(True)
+        instance.query_mode = "topic"
+        instance.web = SimpleNamespace(always_search=True,
+                                       review=lambda item, _metadata: {"sources": [item.claim.text], "errors": []})
+        instance.judge = object()
+        instance.notes = ["A fixed note."]
+        return instance
+
+    sequential = make_processor()
+    assert make_processor().process_many(contexts, max_claims=3) == [
+        sequential.process(item) for item in contexts]
+
+    broken = make_processor()
+    def fail_judgement(*_args):
+        raise RuntimeError("judge failure propagates")
+
+    monkeypatch.setattr("src.pipeline.live_processor.check_claim", fail_judgement)
+    with pytest.raises(RuntimeError, match="judge failure propagates"):
+        broken.process_many(contexts, max_claims=3)
+
+    broken_web = make_processor()
+
+    def fail_research(*_args):
+        raise RuntimeError("research failure propagates")
+
+    broken_web.web.review = fail_research
+    with pytest.raises(RuntimeError, match="research failure propagates"):
+        broken_web.process_many(contexts, max_claims=3)
+
+
+def test_batch_keeps_each_web_research_plan_when_later_reviews_mutate_their_plans(monkeypatch):
+    class EmptySources:
+        always_search = True
+
+        def search(self, _query):
+            return []
+
+    seen = []
+
+    def judge(claim, review, _model):
+        text = review["assertions"][0]["text"]
+        seen.append((claim, text))
+        return {"claim": claim, "plan_text": text}
+
+    monkeypatch.setattr("src.pipeline.live_processor.check_claim", judge)
+    contexts = [ClaimContext(TranscriptUpdate(str(index), 0, text, 0, 1, True), ())
+                for index, text in enumerate(("Jobs rose.", "Wages fell."))]
+
+    def make_processor():
+        instance = processor(True)
+        instance.query_mode = "topic"
+        instance.web = WebResearch(EmptySources())
+        instance.judge = object()
+        return instance
+
+    batched = make_processor().process_many(contexts, max_claims=3)
+    sequential_processor = make_processor()
+    sequential = [sequential_processor.process(item) for item in contexts]
+    assert batched == sequential
+    assert seen == [("Jobs rose.", "Jobs rose."), ("Wages fell.", "Wages fell.")] * 2
+    assert [row["research"]["assertions"][0]["text"] for row in batched] == ["Jobs rose.", "Wages fell."]

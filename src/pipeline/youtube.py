@@ -211,21 +211,28 @@ class YouTubeChecker:
         if begin_check is not None:
             begin_check(metadata)
         sentences = caption_claims(excerpt.text)
-        rows = []
+        candidates = []
         # Most recent first, so the clicked claim gets the shared web budget before anything earlier,
         # and the three slots go to check-worthy sentences: a "No." or an "Okay?" the detector skips
         # is shown as skipped but does not use one up.
         for sentence in reversed(sentences):
-            if sum(row["result"].get("status") != "skipped" for row in rows) >= MAX_CLAIMS:
-                break
             # Cue timings bound the excerpt; sentence-level word timings are unavailable.
             claim = TranscriptUpdate(str(sentence.index), 0, sentence.text, excerpt.start, excerpt.end, True, "captions")
             preceding = tuple(
                 TranscriptUpdate(str(prior.index), 0, prior.text, excerpt.start, excerpt.end, True, "captions")
                 for prior in sentences[:sentence.index]
             )
-            result = self.processor.process(ClaimContext(claim, preceding))
-            rows.append({"text": sentence.text, "result": result})
+            candidates.append((sentence, ClaimContext(claim, preceding)))
+        if type(self.processor) is LiveProcessor:
+            results = self.processor.process_many((context for _, context in candidates), max_claims=MAX_CLAIMS)
+            rows = [{"text": sentence.text, "result": result}
+                    for (sentence, _), result in zip(candidates, results, strict=False)]
+        else:
+            rows = []
+            for sentence, context in candidates:
+                if sum(row["result"].get("status") != "skipped" for row in rows) >= MAX_CLAIMS:
+                    break
+                rows.append({"text": sentence.text, "result": self.processor.process(context)})
         rows.reverse()
         web_scope = ("experimental news research enabled; source applicability unverified"
                      if getattr(self.processor, "web", None) is not None

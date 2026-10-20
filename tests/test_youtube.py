@@ -464,6 +464,42 @@ def test_skipped_sentences_do_not_use_up_the_three_claim_slots():
     assert longer["omitted_claims"] == 1 and longer["rows"][0]["text"] == "Rates rose in April by two points."
 
 
+def test_default_live_processor_researches_latest_worthy_claims_before_judging(monkeypatch):
+    from src.pipeline.live_processor import LiveProcessor
+
+    events = []
+    monkeypatch.setattr("src.pipeline.detector.CheckworthyDetector",
+                        lambda *args, **kwargs: pytest.fail("test attempted to load the detector model"))
+    monkeypatch.setattr("src.pipeline.live_processor.DetectorFilter", lambda: SimpleNamespace(
+        decide=lambda claim: SimpleNamespace(worthy=len(claim.split()) >= 5, reason="rule", score=0.4)))
+
+    def factory(metadata):
+        web = SimpleNamespace(always_search=True, begin_check=lambda: events.append("begin"),
+                              review=lambda context, _metadata: events.append(("web", context.claim.text))
+                              or {"sources": [context.claim.text], "errors": []})
+        return LiveProcessor(metadata, query_mode="topic", web=web, judge=object())
+
+    monkeypatch.setattr("src.pipeline.live_processor.check_claim",
+                        lambda claim, _review, _judge: events.append(("judge", claim)) or {"claim": claim})
+    app = YouTubeChecker(factory)
+    text = ("Older claim about rates here. Rates rose in April by two points. "
+            "That is around 25% of the population. No. Yes, we do. Okay? We have a good job shortage.")
+    try:
+        result = app.check(payload(captions=[{"start": 10, "end": 15, "text": text}]))
+    finally:
+        app.close()
+    newest = ["We have a good job shortage.", "That is around 25% of the population.",
+              "Rates rose in April by two points."]
+    assert events == ["begin"] + [("web", claim) for claim in newest] + [("judge", claim) for claim in newest]
+    assert [row["text"] for row in result["rows"]] == [
+        "Rates rose in April by two points.", "That is around 25% of the population.",
+        "No. Yes, we do.", "Okay?", "We have a good job shortage."]
+    assert result["omitted_claims"] == 1
+    assert sum(row["result"]["status"] != "skipped" for row in result["rows"]) == 3
+    assert all("decomposed" in row["result"] for row in result["rows"]
+               if row["result"]["status"] != "skipped")
+
+
 def test_viewer_declared_country_reaches_the_metadata_and_the_result_but_is_never_inferred():
     seen = []
 

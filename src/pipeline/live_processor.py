@@ -6,7 +6,7 @@ Operational failures propagate to the session's failed event and never become ab
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import asdict
 
 from src.pipeline.caption_claims import corrective_contrast
@@ -47,6 +47,27 @@ class LiveProcessor:
             self.web.begin_check()
 
     def process(self, context: ClaimContext) -> dict:
+        return self._process(context, defer_web_judge=False)
+
+    def process_many(self, contexts: Iterable[ClaimContext], *, max_claims: int) -> list[dict]:
+        """Research selected news claims before local reading consumes their shared web budget."""
+        defer = self.query_mode == "topic" and getattr(self.web, "always_search", False)
+        prepared = []
+        worthy = 0
+        for context in contexts:
+            if worthy >= max_claims:
+                break
+            result = self._process(context, defer_web_judge=True) if defer else self.process(context)
+            prepared.append(result)
+            worthy += result.get("status") != "skipped"
+        judge = getattr(self, "judge", None) if defer else None
+        if judge is not None:
+            for result in prepared:
+                if result.get("outcome") == "declined_web_review":
+                    result["decomposed"] = check_claim(result["claim"], result["research"], judge)
+        return prepared
+
+    def _process(self, context: ClaimContext, *, defer_web_judge: bool) -> dict:
         query = build_query(context, self.metadata, mode=self.query_mode)
         decision = self.detector.decide(query.claim)
         result = {
@@ -83,7 +104,7 @@ class LiveProcessor:
                     "corpus": "Live web research; applicability unverified", "evidence": [], "research": review,
                 }
                 judge = getattr(self, "judge", None)     # tests build instances without __init__, as for web
-                if judge is not None:
+                if judge is not None and not defer_web_judge:
                     outcome["decomposed"] = check_claim(query.claim, review, judge)
                 if getattr(self, "notes", None):
                     outcome["notes"] = list(self.notes)
