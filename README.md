@@ -11,10 +11,21 @@ below measure individual components, not reliability on political videos.
 
 ## What a check looks like
 
-Pause after a claim and press **Check what I just heard**. The extension reads the last
-30 seconds of captions, and the local checker picks up to three check-worthy sentences.
-It searches Google News for each one and reads the pages on your machine, then shows one
-card per claim, newest first:
+Pause after a claim and press **Check** (or Alt+Shift+F, which also works in fullscreen).
+The extension reads the last 30 seconds of captions, and the local checker picks up to three
+check-worthy sentences. It searches Google News for each one and reads the pages on your
+machine, then shows one notification per claim beside the video, newest first. Nothing covers
+the picture outside fullscreen:
+
+| Normal | Theater | Fullscreen |
+| --- | --- | --- |
+| <img src="docs/demo/blips-normal.png" width="260" alt="Normal mode: compact notifications beside the player, one supported by cnbc.com and two not established"> | <img src="docs/demo/blips-theater.png" width="260" alt="Theater mode: the supported reading opened as a narrow card in the black bar beside the video"> | <img src="docs/demo/blips-fullscreen.png" width="260" alt="Fullscreen: the supported reading opened in the top-right corner"> |
+| Compact notifications beside the player; tap one for its quoted source. | The newest reading opens by itself in the black bar beside the video. | The reading opens in the corner and folds to a small chip after 15 s. |
+
+These were rendered by the extension's own code over a saved check of the jobs-report video
+below, recorded after support confirmation was adopted, on a mock watch page rather than YouTube. "Not established" notifications fold into a count after
+6 s, and a contradiction resting on one source always says "One source only". Each notification
+opens the full card:
 
 - **The badge.** "Supported" or "Contradicted" appears only when an independent source with
   a confirmed date states it. Otherwise the card says "Not established", which is the usual
@@ -26,8 +37,9 @@ card per claim, newest first:
   opinion, forecasts, image captions, and the speaker's own words reprinted by a transcript
   or a quoting article. It also lists the searches and the pages that failed to load.
 
-Three checks recorded on 2026-10-20. Each was rendered by the extension's own panel code
-over the saved result; the video player is not shown.
+Three checks recorded on 2026-10-20, shown as the full card each notification opens. Each
+was rendered by the extension's own panel code over the saved result; the video player is not
+shown.
 
 | Jobs report (CBS News) | Functional unemployment (CBS News) | 2026 State of the Union |
 | --- | --- | --- |
@@ -135,11 +147,11 @@ metric definitions, and reproduction limits.
 ## How it works
 
 1. Play a YouTube video with available English captions and let a claim finish.
-2. Open the **Fact checker** panel and select **Check what I just heard**.
+2. Press **Check**, the extension icon or Alt+Shift+F.
 3. The extension reads recent caption text and passes it to the local Python
    checker, which selects claims and searches for source material.
-4. The panel displays source quotations, links, and an experimental assessment
-   for the viewer to inspect.
+4. A notification per claim appears beside the video; each opens the source quotations,
+   links, and an experimental assessment for the viewer to inspect.
 
 Checks run when requested. The current workflow uses caption data; visible CC and
 YouTube's transcript panel can stay closed. Caption availability and errors can
