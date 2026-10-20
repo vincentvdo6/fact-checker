@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.verdict.assertions import claim_assertions, negate_form, object_phrase, positive_form
+from src.verdict.assertions import claim_assertions, compound_parts, negate_form, object_phrase, positive_form
 
 
 def test_contrast_splits_into_two_exact_spans_with_polarity():
@@ -55,3 +55,17 @@ def test_negate_form_inserts_one_negation_after_the_first_copula_or_auxiliary():
     assert negate_form("We don't have a labor shortage.") is None
     assert negate_form("There is no port.") is None
     assert negate_form("Kyoto hosts a festival.") is None
+
+
+def test_a_compound_of_two_clauses_joined_by_but_is_two_exact_assertions():
+    claim = ("As of July, the unemployment rate stood at 4.1% but according to data from the Ludwig Institute, "
+             "the true rate of unemployment was actually at 24.9%.")
+    rows = claim_assertions(claim)
+    assert [row["text"] for row in rows] == ["As of July, the unemployment rate stood at 4.1%",
+                                             "according to data from the Ludwig Institute, the true rate of "
+                                             "unemployment was actually at 24.9%."]
+    assert all(row["contrast"] and row["text"] in claim for row in rows)
+    for whole in ("Inflation is falling but still too high.", "The council voted to close the library.",
+                  "He should have had him out, but Putin's probably asking for billions.",
+                  "Not really, but the council voted to close the library."):
+        assert compound_parts(whole) == () and len(claim_assertions(whole)) == 1, whole

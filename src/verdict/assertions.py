@@ -11,6 +11,7 @@ from __future__ import annotations
 import re
 
 from src.pipeline.caption_claims import contrast_parts
+from src.pipeline.segment import AUXILIARIES, IRREGULAR_PAST
 
 _NEGATED = re.compile(r"\b(?:not|no|n't|never|nobody|nothing)\b|n['’]t\b", re.I)
 _CLAUSE = re.compile(
@@ -33,11 +34,32 @@ _POSITIVE = {"do not have": "have", "don't have": "have", "have no": "have", "do
              "is not": "is", "isn't": "is", "is no": "is", "am not": "am"}
 
 
+def _clause(text: str) -> bool:
+    words = re.findall(r"[a-z']+", text.lower())
+    return len(words) >= 3 and any(word in AUXILIARIES or word in IRREGULAR_PAST or
+                                   (len(word) > 4 and word.endswith("ed")) for word in words)
+
+
+def compound_parts(claim: str) -> tuple[str, ...]:
+    """"X, but Y" with a finite-verb clause on each side: two facts, each checked on its own.
+
+    "As of July, the unemployment rate stood at 4.1% but according to the Ludwig Institute the
+    true rate was 24.9%" is stated by no single sentence and by two; "Inflation is falling but
+    still too high" has no clause after "but" and stays whole. Like a contrast, the claim is
+    established only when both are.
+    """
+    for match in re.finditer(r",?\s+but\s+", claim, flags=re.I):
+        left, right = claim[:match.start()].strip(), claim[match.end():].strip()
+        if _clause(left) and _clause(right):
+            return left, right
+    return ()
+
+
 def claim_assertions(claim: str) -> list[dict]:
     """Exact assertion spans with a stable ID and whether each is a denial."""
     if not isinstance(claim, str) or not claim.strip():
         raise ValueError("A claim must be nonempty text.")
-    parts = contrast_parts(claim) or (claim.strip(),)
+    parts = contrast_parts(claim) or compound_parts(claim) or (claim.strip(),)
     for part in parts:
         if part not in claim:
             raise ValueError("Assertions must be exact spans of the claim.")
