@@ -627,3 +627,33 @@ def test_the_host_launcher_bakes_in_the_record_directory_only_when_asked():
     workspace = PureWindowsPath(r"C:\100%\repo")
     percent = launcher_text(workspace, workspace / "python.exe", workspace / "runs/clicks")
     assert "C:\\100%%\\repo\\runs\\clicks" in percent, "percent signs are escaped for batch"
+
+
+def test_claim_truth_template_lists_researched_claims_blind_and_keeps_filled_values(tmp_path, monkeypatch):
+    import json
+
+    from scripts.claim_truth_template import main, researched_claims
+
+    clicks = tmp_path / "clicks"
+    clicks.mkdir()
+    verdict = {"summary": "established", "assertions": [{"status": "supported"}]}
+    record = {"payload": {}, "result": {"video_id": "abc", "title": "T", "clicked_at": 15.0, "claim_country": "Peru", "rows": [
+        {"text": "Rates rose.", "result": {"research": {"sources": []}, "decomposed": {"claim": "Rates rose.", "verdict": verdict}}},
+        {"text": "Okay.", "result": {"status": "not_selected"}},
+        {"text": "Rates rose.", "result": {"research": {"sources": []}, "decomposed": {"claim": "Rates rose.", "verdict": verdict}}}]}}
+    (clicks / "click-1.json").write_text(json.dumps(record), encoding="utf-8")
+    found = researched_claims(clicks)
+    assert [item["claim"] for item in found] == ["Rates rose."], "researched claims only, once each"
+    assert found[0]["country"] == "Peru" and "verdict" not in json.dumps(found), "no verdict travels with the template"
+
+    out = tmp_path / "truth.json"
+    out.write_text(json.dumps({"labeller": "V", "written": "2026-09-20", "claims": {
+        "Rates rose.": {"true": False, "note": "checked", "video": "abc", "title": "T", "at_seconds": 15.0, "country": "Peru"}}}),
+        encoding="utf-8")
+    record["result"]["rows"].append({"text": "Prices fell.", "result": {"research": {"sources": []}}})
+    (clicks / "click-2.json").write_text(json.dumps(record), encoding="utf-8")
+    monkeypatch.setattr("sys.argv", ["claim_truth_template", "--clicks", str(clicks), "--out", str(out)])
+    main()
+    claims = json.loads(out.read_text(encoding="utf-8"))["claims"]
+    assert claims["Rates rose."]["true"] is False and claims["Rates rose."]["note"] == "checked", "filled values are kept"
+    assert claims["Prices fell."]["true"] is None and "verdict" not in json.dumps(claims), "new claims arrive blind and unset"

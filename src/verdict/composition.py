@@ -15,7 +15,10 @@ news; the rule was lifted on the measurement the viewer actually experiences -- 
 claims the composed reading pointed a direction 47 times and was right 47 times (in-sample for
 that decision, `scripts/measure_directions.py`), 29 of them held at "not established" by the
 two-source rule alone -- while the judge's per-sentence counting error stayed near a half,
-because a wrong count usually lands on a page that is about the claim being true or false.
+because a wrong count usually lands on a page that is about the claim being true or false. On
+a batch written and clicked after the decision (142 claims, 2026-09-15) it pointed a direction
+45 times and was right 42 times; the three wrong were single-source contradictions of true
+claims, the judge's negation tell, and the page says what it rests on so a reader can check.
 When sources point both ways the assertion is contested, not averaged. A contrast is
 established only when every one of its assertions is; otherwise the whole claim is reported as
 partially established or unresolved, with each half's status kept apart.

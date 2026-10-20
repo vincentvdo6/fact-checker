@@ -1,0 +1,483 @@
+{
+ "labeller": "automated first pass by a language model; single annotator, not a person. Values are the annotator's belief about each claim, written 2026-09-15 before any source was seen and before the batch was clicked; claims 0-77 written as believed true, 78-141 written as altered or negated",
+ "written": "2026-09-15",
+ "batches": {
+  "test": "runs/live-click/test_claims.json, clicked 2026-09-15; held out from every rule decision"
+ },
+ "claims": {
+  "The 2026 Winter Olympics opened in Milan in February 2026.": {
+   "true": true
+  },
+  "Bad Bunny performed the Super Bowl LX halftime show in February 2026.": {
+   "true": true
+  },
+  "The Seattle Seahawks won Super Bowl LX.": {
+   "true": true
+  },
+  "Nvidia's quarterly revenue exceeded 50 billion dollars in late 2025.": {
+   "true": true
+  },
+  "The Federal Reserve lowered interest rates in December 2025.": {
+   "true": true
+  },
+  "The Bank of Japan raised its policy rate in December 2025.": {
+   "true": true
+  },
+  "Netflix announced an agreement to acquire Warner Bros. Discovery's studios and streaming business in December 2025.": {
+   "true": true
+  },
+  "Nasry Asfura was declared the winner of Honduras's 2025 presidential election.": {
+   "true": true
+  },
+  "Nicolas Maduro was captured by United States forces in January 2026.": {
+   "true": true
+  },
+  "Delcy Rodriguez became acting president of Venezuela in January 2026.": {
+   "true": true
+  },
+  "Bitcoin fell below 70,000 dollars in early 2026.": {
+   "true": true
+  },
+  "Gold passed 5,000 dollars an ounce in January 2026.": {
+   "true": true
+  },
+  "Antonio Jose Seguro won Portugal's presidential election in February 2026.": {
+   "true": true
+  },
+  "Laura Fernandez was elected president of Costa Rica in February 2026.": {
+   "true": true
+  },
+  "Yoweri Museveni won re-election as president of Uganda in January 2026.": {
+   "true": true
+  },
+  "Ali Khamenei was killed in an airstrike in February 2026.": {
+   "true": true
+  },
+  "Pope Leo XIV visited Turkey and Lebanon in late 2025.": {
+   "true": true
+  },
+  "SpaceX's Starship completed its eleventh test flight in October 2025.": {
+   "true": true
+  },
+  "Blue Origin's New Glenn rocket launched NASA's ESCAPADE mission in November 2025.": {
+   "true": true
+  },
+  "Tesla shareholders approved a pay package for Elon Musk in November 2025.": {
+   "true": true
+  },
+  "OpenAI completed its restructuring into a public benefit corporation in October 2025.": {
+   "true": true
+  },
+  "Amazon announced about 14,000 corporate job cuts in October 2025.": {
+   "true": true
+  },
+  "The Toronto Blue Jays reached the 2025 World Series.": {
+   "true": true
+  },
+  "Shohei Ohtani won the 2025 National League MVP award.": {
+   "true": true
+  },
+  "Aaron Judge won the 2025 American League MVP award.": {
+   "true": true
+  },
+  "Italy won the 2025 Davis Cup.": {
+   "true": true
+  },
+  "Scottie Scheffler won the 2025 Open Championship.": {
+   "true": true
+  },
+  "Marc Marquez won the 2025 MotoGP world championship.": {
+   "true": true
+  },
+  "Tadej Pogacar won the 2025 Tour de France.": {
+   "true": true
+  },
+  "Ousmane Dembele won the 2025 Ballon d'Or.": {
+   "true": true
+  },
+  "Aitana Bonmati won the 2025 women's Ballon d'Or.": {
+   "true": true
+  },
+  "England won the 2025 Women's Euro.": {
+   "true": true
+  },
+  "India won the 2025 Women's Cricket World Cup.": {
+   "true": true
+  },
+  "An earthquake in eastern Afghanistan in August 2025 killed more than 1,000 people.": {
+   "true": true
+  },
+  "A magnitude 8.8 earthquake struck off Russia's Kamchatka peninsula in July 2025.": {
+   "true": true
+  },
+  "Peru's Congress removed President Dina Boluarte from office in October 2025.": {
+   "true": true
+  },
+  "Madagascar's president Andry Rajoelina was ousted in October 2025.": {
+   "true": true
+  },
+  "Catherine Connolly was elected president of Ireland in October 2025.": {
+   "true": true
+  },
+  "Andrej Babis's ANO party won the Czech parliamentary election in October 2025.": {
+   "true": true
+  },
+  "Andrej Babis was appointed prime minister of the Czech Republic in December 2025.": {
+   "true": true
+  },
+  "Moldova's pro-European PAS party won the September 2025 parliamentary election.": {
+   "true": true
+  },
+  "Norway's Labour Party won the September 2025 general election.": {
+   "true": true
+  },
+  "Paul Biya was declared the winner of Cameroon's October 2025 presidential election.": {
+   "true": true
+  },
+  "Alassane Ouattara won a fourth term as president of Ivory Coast in October 2025.": {
+   "true": true
+  },
+  "Guinea-Bissau's military seized power in November 2025.": {
+   "true": true
+  },
+  "Sebastien Lecornu became prime minister of France in September 2025.": {
+   "true": true
+  },
+  "The United Kingdom and India signed a free trade agreement in July 2025.": {
+   "true": true
+  },
+  "Donald Trump and Xi Jinping met in Busan in October 2025.": {
+   "true": true
+  },
+  "The indictment of James Comey was dismissed in November 2025.": {
+   "true": true
+  },
+  "John Bolton was indicted in October 2025.": {
+   "true": true
+  },
+  "The Epstein Files Transparency Act was signed into law in November 2025.": {
+   "true": true
+  },
+  "The 2025 Nobel Prize in Literature was awarded to Laszlo Krasznahorkai.": {
+   "true": true
+  },
+  "John Clarke shared the 2025 Nobel Prize in Physics.": {
+   "true": true
+  },
+  "Joel Mokyr shared the 2025 Nobel Prize in Economics.": {
+   "true": true
+  },
+  "The Pitt won the 2025 Emmy Award for outstanding drama series.": {
+   "true": true
+  },
+  "Adolescence won the 2025 Emmy Award for outstanding limited series.": {
+   "true": true
+  },
+  "One Battle After Another won the Academy Award for Best Picture in March 2026.": {
+   "true": true
+  },
+  "Taylor Swift released the album The Life of a Showgirl in October 2025.": {
+   "true": true
+  },
+  "Taylor Swift and Travis Kelce announced their engagement in August 2025.": {
+   "true": true
+  },
+  "ABC suspended Jimmy Kimmel's show in September 2025.": {
+   "true": true
+  },
+  "CBS announced in July 2025 that The Late Show with Stephen Colbert would end in 2026.": {
+   "true": true
+  },
+  "Electronic Arts agreed to be taken private in a 55 billion dollar deal in September 2025.": {
+   "true": true
+  },
+  "OpenAI launched the Sora app in September 2025.": {
+   "true": true
+  },
+  "Grand Theft Auto VI was delayed to November 2026.": {
+   "true": true
+  },
+  "Cloudflare suffered a major outage in November 2025.": {
+   "true": true
+  },
+  "Amazon Web Services suffered a major outage in October 2025.": {
+   "true": true
+  },
+  "A UPS cargo plane crashed in Louisville in November 2025, killing more than a dozen people.": {
+   "true": true
+  },
+  "Lisbon's Gloria funicular derailed in September 2025, killing 16 people.": {
+   "true": true
+  },
+  "A fire in Hong Kong's Tai Po district killed more than 100 people in November 2025.": {
+   "true": true
+  },
+  "Poland closed its border with Belarus in September 2025.": {
+   "true": true
+  },
+  "Russian drones entered Polish airspace in September 2025.": {
+   "true": true
+  },
+  "France formally recognised the State of Palestine in September 2025.": {
+   "true": true
+  },
+  "Sudan's Rapid Support Forces captured El Fasher in October 2025.": {
+   "true": true
+  },
+  "Nicolas Sarkozy began serving a prison sentence in October 2025.": {
+   "true": true
+  },
+  "Jair Bolsonaro was sentenced to 27 years in prison in September 2025.": {
+   "true": true
+  },
+  "Colombian senator Miguel Uribe Turbay died in August 2025 after being shot.": {
+   "true": true
+  },
+  "Cyclone Ditwah killed hundreds of people in Sri Lanka in November 2025.": {
+   "true": true
+  },
+  "The NDA won the 2025 Bihar assembly election.": {
+   "true": true
+  },
+  "The 2026 Winter Olympics were held in Stockholm.": {
+   "true": false,
+   "note": "Milan-Cortina"
+  },
+  "Kendrick Lamar performed the Super Bowl LX halftime show.": {
+   "true": false,
+   "note": "Bad Bunny; Lamar did LIX"
+  },
+  "The Los Angeles Rams won Super Bowl LX.": {
+   "true": false,
+   "note": "Seahawks"
+  },
+  "Nvidia's quarterly revenue fell below 20 billion dollars in 2025.": {
+   "true": false
+  },
+  "The Federal Reserve raised interest rates in December 2025.": {
+   "true": false,
+   "note": "cut"
+  },
+  "The Bank of Japan cut its policy rate in December 2025.": {
+   "true": false,
+   "note": "raised"
+  },
+  "Netflix announced a deal to buy Disney in 2025.": {
+   "true": false
+  },
+  "Nasry Asfura lost Honduras's 2025 presidential election.": {
+   "true": false
+  },
+  "Nicolas Maduro remained in power in Venezuela through 2026.": {
+   "true": false,
+   "note": "captured January 2026"
+  },
+  "Delcy Rodriguez was captured by United States forces in January 2026.": {
+   "true": false,
+   "note": "Maduro was"
+  },
+  "Bitcoin rose above 150,000 dollars in 2025.": {
+   "true": false,
+   "note": "peak near 126,000"
+  },
+  "Gold fell below 3,000 dollars an ounce in 2026.": {
+   "true": false
+  },
+  "Andre Ventura won Portugal's presidential election in February 2026.": {
+   "true": false,
+   "note": "Seguro"
+  },
+  "Laura Fernandez lost Costa Rica's 2026 presidential election.": {
+   "true": false
+  },
+  "Yoweri Museveni lost the January 2026 Ugandan presidential election.": {
+   "true": false
+  },
+  "Ali Khamenei is still alive.": {
+   "true": false,
+   "note": "killed February 2026"
+  },
+  "Pope Leo XIV visited Brazil in 2025.": {
+   "true": false
+  },
+  "SpaceX's Starship has never completed a test flight.": {
+   "true": false
+  },
+  "Blue Origin's New Glenn rocket has never reached orbit.": {
+   "true": false
+  },
+  "Tesla shareholders rejected Elon Musk's pay package in November 2025.": {
+   "true": false,
+   "note": "approved"
+  },
+  "Amazon announced it would add 14,000 corporate jobs in October 2025.": {
+   "true": false,
+   "note": "cuts"
+  },
+  "The Toronto Blue Jays won the 2025 World Series.": {
+   "true": false,
+   "note": "lost to the Dodgers"
+  },
+  "Cal Raleigh won the 2025 American League MVP award.": {
+   "true": false,
+   "note": "Judge"
+  },
+  "Spain won the 2025 Davis Cup.": {
+   "true": false,
+   "note": "Italy"
+  },
+  "Bryson DeChambeau won the 2025 Open Championship.": {
+   "true": false,
+   "note": "Scheffler"
+  },
+  "Jonas Vingegaard won the 2025 Tour de France.": {
+   "true": false,
+   "note": "Pogacar"
+  },
+  "Lamine Yamal won the 2025 Ballon d'Or.": {
+   "true": false,
+   "note": "Dembele; Yamal second"
+  },
+  "Spain won the 2025 Women's Euro.": {
+   "true": false,
+   "note": "England"
+  },
+  "South Africa won the 2025 Women's Cricket World Cup.": {
+   "true": false,
+   "note": "India"
+  },
+  "The August 2025 earthquake in Afghanistan killed fewer than 50 people.": {
+   "true": false
+  },
+  "The July 2025 Kamchatka earthquake had a magnitude below 7.": {
+   "true": false,
+   "note": "8.8"
+  },
+  "Dina Boluarte completed her term as president of Peru.": {
+   "true": false,
+   "note": "removed October 2025"
+  },
+  "Andry Rajoelina is still president of Madagascar.": {
+   "true": false,
+   "note": "ousted October 2025"
+  },
+  "Heather Humphreys was elected president of Ireland in October 2025.": {
+   "true": false,
+   "note": "Connolly"
+  },
+  "Petr Fiala's coalition won the Czech parliamentary election in October 2025.": {
+   "true": false,
+   "note": "ANO"
+  },
+  "Norway's Conservative Party won the September 2025 general election.": {
+   "true": false,
+   "note": "Labour"
+  },
+  "Alassane Ouattara lost Ivory Coast's October 2025 presidential election.": {
+   "true": false
+  },
+  "Sebastien Lecornu became president of France in 2025.": {
+   "true": false,
+   "note": "prime minister"
+  },
+  "The United Kingdom and India signed a free trade agreement in 2023.": {
+   "true": false,
+   "note": "July 2025"
+  },
+  "Donald Trump and Xi Jinping met in Beijing in October 2025.": {
+   "true": false,
+   "note": "Busan"
+  },
+  "James Comey was convicted in 2025.": {
+   "true": false,
+   "note": "indictment dismissed"
+  },
+  "The Epstein Files Transparency Act was vetoed in November 2025.": {
+   "true": false,
+   "note": "signed"
+  },
+  "The 2025 Nobel Prize in Literature was awarded to Haruki Murakami.": {
+   "true": false,
+   "note": "Krasznahorkai"
+  },
+  "John Clarke won the 2025 Nobel Prize in Chemistry.": {
+   "true": false,
+   "note": "Physics"
+  },
+  "Daron Acemoglu won the 2025 Nobel Prize in Economics.": {
+   "true": false,
+   "note": "2024 laureate"
+  },
+  "The Pitt won the 2025 Emmy Award for outstanding comedy series.": {
+   "true": false,
+   "note": "drama"
+  },
+  "Taylor Swift released The Life of a Showgirl in 2024.": {
+   "true": false,
+   "note": "October 2025"
+  },
+  "ABC cancelled Jimmy Kimmel's show permanently in September 2025.": {
+   "true": false,
+   "note": "suspended, returned"
+  },
+  "Electronic Arts was acquired by Microsoft in 2025.": {
+   "true": false
+  },
+  "Grand Theft Auto VI was released in 2025.": {
+   "true": false,
+   "note": "delayed to November 2026"
+  },
+  "Amazon Web Services had no major outage in 2025.": {
+   "true": false,
+   "note": "October 2025 outage"
+  },
+  "The UPS cargo plane crash in Louisville in November 2025 killed no one.": {
+   "true": false
+  },
+  "The Lisbon funicular accident in September 2025 killed fewer than five people.": {
+   "true": false,
+   "note": "16"
+  },
+  "The Hong Kong Tai Po fire in November 2025 killed fewer than 10 people.": {
+   "true": false,
+   "note": "more than 100"
+  },
+  "Poland closed its border with Germany in September 2025.": {
+   "true": false,
+   "note": "Belarus"
+  },
+  "France has not recognised the State of Palestine.": {
+   "true": false,
+   "note": "recognised September 2025"
+  },
+  "Sudan's army recaptured El Fasher in October 2025.": {
+   "true": false,
+   "note": "RSF captured it"
+  },
+  "Nicolas Sarkozy was acquitted in 2025.": {
+   "true": false
+  },
+  "Jair Bolsonaro was acquitted by Brazil's Supreme Court in September 2025.": {
+   "true": false,
+   "note": "sentenced"
+  },
+  "Miguel Uribe Turbay survived the 2025 shooting and returned to the Senate.": {
+   "true": false,
+   "note": "died August 2025"
+  },
+  "The NDA lost the 2025 Bihar assembly election.": {
+   "true": false
+  },
+  "Guinea-Bissau held a peaceful transfer of power in November 2025.": {
+   "true": false,
+   "note": "coup"
+  },
+  "One Battle After Another lost the Academy Award for Best Picture in March 2026.": {
+   "true": false,
+   "note": "won"
+  },
+  "Paul Biya lost Cameroon's October 2025 presidential election.": {
+   "true": false
+  }
+ }
+}

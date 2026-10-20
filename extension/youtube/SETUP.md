@@ -125,9 +125,10 @@ qualify but never establish; an assertion is established by one independent sour
 with a confirmed publication date, which the card names ("one source: rbc.com
 (published 2025-07-09)"); a contrast is established only when both halves are. The
 reliability line above the counted sentences is the measurement that matches what you
-see: on 153 unseen claims (2026-09-14) the reading pointed a direction 47 times and
-pointed the right way 47 times -- a number decided on those same clicks, so the next
-batch of recorded clicks is its test. The page shows the
+see: on 142 claims written and clicked after the rule was decided (2026-09-15) the reading
+pointed a direction 45 times and pointed the right way 42 times; the three misses were
+single-source contradictions of true claims, so read the quoted sentence before trusting a
+"contradicted". The page shows the
 counted sentences and the strongest bearing ones verbatim with any definition from
 the same paragraph; nothing is paraphrased and no figure appears that is not in a
 quoted sentence. Similar numbers are not labelled as confirming a claim's figure:
@@ -197,15 +198,26 @@ are logged to the host's stderr without failing the check. Run the installer wit
 `--no-record` (or no recording flag), then reload the extension, to stop recording.
 The launcher clears inherited recording settings so recording stays opt-in.
 
-Aim for ten to twenty clicks on different videos and topics -- economics, crime, health,
-foreign affairs, sport, whatever you watch -- with **Claims are about** set, since that
-changes what is retrieved. Clicks on one video seconds apart are rate-limited by Google
-News (the card records the HTTP 403), so spread them out. Then, in the repository:
+Every earlier measurement was made on claims written as single clean sentences; what
+viewers click are captions. Aim for ten to twenty clicks on different videos and topics
+-- economics, crime, health, foreign affairs, sport, whatever you watch -- and inspect
+the detected context, correcting it when needed, since it changes what is retrieved.
+Clicks on one video seconds apart are rate-limited by Google News (the card records the
+HTTP 403), so spread them out. Two measurements follow, and the first needs nothing but
+your own knowledge:
 
-    python -m scripts.harvest_clicks --name clicks-2026-09-13
+    python -m scripts.claim_truth_template --clicks runs/clicks --out labels/claim-truth-clicks-2026-09-20.json
+    # fill in "true": true / false for each claim without reading its card, then
+    python -m scripts.measure_directions --clicks runs/clicks --truth labels/claim-truth-clicks-2026-09-20.json
+
+reports how often the reading's direction was right on your clicks; with `--record` it
+becomes the record the card's reliability line quotes. The second is the judge's
+per-sentence record, a few minutes of labelling per claim:
+
+    python -m scripts.harvest_clicks --name clicks-2026-09-20
     python -m scripts.label_pairs
-    python -m scripts.eval_pair_judge --labels labels/pairs-clicks-2026-09-13.json --judge pair --probe-negation --probe-hedges
-    python -m scripts.measure_role_rules --labels labels/roles-clicks-2026-09-13.json
+    python -m scripts.eval_pair_judge --labels labels/pairs-clicks-2026-09-20.json --judge pair --probe-negation --probe-hedges
+    python -m scripts.measure_role_rules --labels labels/roles-clicks-2026-09-20.json
 
 The harvest rebuilds exactly what the chain read for every researched claim and writes
 `labels/pairs-<name>.json` (one item per assertion and eligible sentence, the judge's

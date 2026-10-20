@@ -12,8 +12,9 @@ The direction of an assertion does not depend on the single-source rule: that ru
 whether a directional reading is "established" or "not established", so a record measured
 under either rule scores the same readings. The record is written beside the active judge
 (`direction_measurement.json`) with `--record`, and composition shows it on every page that
-points a direction. The measurement is in-sample for the rule decided on it; the next batch of
-recorded clicks is its test.
+points a direction. The batches the rule was decided on are in-sample for it; the record the
+card quotes is a batch written and clicked after the decision (`runs/direction-measurement/`
+holds each batch's registration, report and truth-file hash).
 
     python -m scripts.measure_directions --clicks runs/clicks-probe --clicks runs/clicks-count \
         --truth labels/claim-truth-2026-09-13.json [--record]
@@ -93,8 +94,9 @@ def main() -> None:
     record = {"claims": claims, "directional": report["directional"], "right": report["right"], "wrong": report["wrong"],
               "measured_on": measured_on, "truth": str(args.truth), "truth_labeller": truth_file.get("labeller", ""),
               "clicks": [str(path) for path in args.clicks],
-              "note": "directions are the same under the two-source rule these clicks were recorded with and the single-source "
-                      "rule decided on them; in-sample for that decision"}
+              "note": "a direction does not depend on the single-source rule (it decides established against not established), "
+                      "so a batch recorded under either rule scores the same readings; whether this batch was seen before the "
+                      "rule was decided is stated in the batch's registration record"}
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps({"record": record, **report}, indent=1, ensure_ascii=False), encoding="utf-8")
     print(json.dumps({key: value for key, value in record.items() if key not in ("truth_labeller", "note")}))
