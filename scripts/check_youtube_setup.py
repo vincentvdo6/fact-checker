@@ -82,7 +82,7 @@ def inspect_setup(root: Path, environment: Mapping[str, str]) -> dict:
     for name, default, allowed in (
         ("WEB_SEARCH", "news", ("news", "off")), ("DECOMPOSED", "on", ("on", "off")),
         ("CONTEXT_REVIEW", "on", ("on", "off")), ("CONTEXT_ORDERING", "on", ("on", "off")),
-        ("CONCEPTS", "on", ("on", "off")),
+        ("CONCEPTS", "on", ("on", "off")), ("NLI_CONFIRM", "on", ("on", "off")),
     ):
         full = "FACT_CHECKER_" + name
         switches[name] = environment.get(full, default).strip()
@@ -102,6 +102,12 @@ def inspect_setup(root: Path, environment: Mapping[str, str]) -> dict:
         configured = environment.get("FACT_CHECKER_PAIR_JUDGE", "").strip() or "models/pair_judge/v4"
         primary = root / configured
         model("sentence judge", primary, PAIR_LABELS, "premise_hypothesis_v1")
+        if switches["NLI_CONFIRM"] == "on":
+            directory = root / "models/nli_confirm/deberta-v3-large-mfalw"
+            names = ("contract.json", "config.json", "tokenizer.json", "onnx/model.onnx")
+            # The host turns it on when the contract and graph are present, so a partial install is an error.
+            activated = all((directory / name).is_file() for name in ("contract.json", "onnx/model.onnx"))
+            files("support confirmation", directory, names, "error" if activated else "warning")
         if switches["CONTEXT_REVIEW"] == "on":
             model("context reviewer", root / "models/pair_judge/v5", PAIR_LABELS,
                   "premise_hypothesis_v1", optional=True)

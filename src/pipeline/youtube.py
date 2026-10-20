@@ -166,6 +166,14 @@ def youtube_processor(metadata: SpeechMetadata) -> LiveProcessor:
         model_dir = Path(os.environ.get("FACT_CHECKER_PAIR_JUDGE", "").strip() or MODEL_DIR)
         if (model_dir / "contract.json").is_file():
             judge = PairJudge(model_dir=model_dir, min_band=Band.STRONG, probe_negation=True, probe_hedges=True)
+            if _switch("FACT_CHECKER_NLI_CONFIRM"):
+                from src.verdict.nli_confirm import MODEL_DIR as NLI_DIR
+                from src.verdict.nli_confirm import NliRuntime, SupportConfirmedJudge
+
+                if (NLI_DIR / "contract.json").is_file() and (NLI_DIR / "onnx/model.onnx").is_file():
+                    judge = SupportConfirmedJudge(judge, NliRuntime(NLI_DIR), model_dir=NLI_DIR)
+                else:
+                    notes.append("Support confirmation is off: the NLI model is not installed.")
             if _switch("FACT_CHECKER_CONTEXT_REVIEW"):
                 from src.verdict.context_review import MODEL_DIR as CONTEXT_MODEL_DIR
                 from src.verdict.context_review import ContextReviewedJudge

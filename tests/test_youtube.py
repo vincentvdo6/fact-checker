@@ -365,6 +365,7 @@ def test_context_review_factory_uses_installed_model_and_allows_opt_out(monkeypa
     monkeypatch.setenv("FACT_CHECKER_WEB_SEARCH", "off")
     monkeypatch.setenv("FACT_CHECKER_DECOMPOSED", "on")
     monkeypatch.setenv("FACT_CHECKER_CONTEXT_ORDERING", "off")
+    monkeypatch.setenv("FACT_CHECKER_NLI_CONFIRM", "off")
     monkeypatch.delenv("FACT_CHECKER_PAIR_JUDGE", raising=False)
     monkeypatch.delenv("FACT_CHECKER_CONTEXT_REVIEW", raising=False)
     processor = module.youtube_processor(SpeechMetadata())
@@ -394,7 +395,7 @@ def test_context_ordering_factory_is_lazy_and_allows_opt_out(monkeypatch, tmp_pa
     monkeypatch.setattr("src.verdict.context_ranker.MODEL_DIR", ranker)
     monkeypatch.setattr("src.verdict.pair_judge.PairJudge", lambda **kw: SimpleNamespace(root=kw["model_dir"]))
     monkeypatch.setattr(module, "LiveProcessor", lambda metadata, **kw: SimpleNamespace(**kw))
-    for key in ("CONCEPTS", "CONTEXT_REVIEW", "WEB_SEARCH"):
+    for key in ("CONCEPTS", "CONTEXT_REVIEW", "WEB_SEARCH", "NLI_CONFIRM"):
         monkeypatch.setenv("FACT_CHECKER_" + key, "off")
     monkeypatch.setenv("FACT_CHECKER_DECOMPOSED", "on")
     monkeypatch.delenv("FACT_CHECKER_PAIR_JUDGE", raising=False)
@@ -412,6 +413,41 @@ def test_context_ordering_factory_is_lazy_and_allows_opt_out(monkeypatch, tmp_pa
     monkeypatch.setenv("FACT_CHECKER_CONTEXT_ORDERING", "sometimes")
     with pytest.raises(ValueError, match="FACT_CHECKER_CONTEXT_ORDERING"):
         module.youtube_processor(SpeechMetadata())
+
+
+def test_support_confirmation_factory_wraps_the_pair_judge_lazily_and_allows_opt_out(monkeypatch, tmp_path):
+    from src.pipeline import youtube as module
+    from src.pipeline.context import SpeechMetadata
+    from src.verdict.nli_confirm import SupportConfirmedJudge
+
+    primary, nli = tmp_path / "primary", tmp_path / "nli"
+    primary.mkdir()
+    (nli / "onnx").mkdir(parents=True)
+    (primary / "contract.json").write_text("{}")
+    (nli / "contract.json").write_text("{}")
+    (nli / "config.json").write_text('{"id2label": {"0": "entailment", "1": "neutral", "2": "contradiction"}}')
+    graph = nli / "onnx/model.onnx"
+    graph.write_bytes(b"not loaded at construction")
+    monkeypatch.setattr("src.verdict.pair_judge.MODEL_DIR", primary)
+    monkeypatch.setattr("src.verdict.nli_confirm.MODEL_DIR", nli)
+    monkeypatch.setattr("src.verdict.pair_judge.PairJudge", lambda **kw: SimpleNamespace(
+        root=kw["model_dir"], measurement=None, direction_measurement=None, probe_negation=True))
+    monkeypatch.setattr(module, "LiveProcessor", lambda metadata, **kw: SimpleNamespace(**kw))
+    for key in ("CONCEPTS", "CONTEXT_REVIEW", "CONTEXT_ORDERING", "WEB_SEARCH"):
+        monkeypatch.setenv("FACT_CHECKER_" + key, "off")
+    monkeypatch.setenv("FACT_CHECKER_DECOMPOSED", "on")
+    monkeypatch.delenv("FACT_CHECKER_PAIR_JUDGE", raising=False)
+    monkeypatch.delenv("FACT_CHECKER_NLI_CONFIRM", raising=False)
+    processor = module.youtube_processor(SpeechMetadata())
+    assert isinstance(processor.judge, SupportConfirmedJudge) and processor.judge.primary.root == primary
+    assert processor.judge.nli._session is None, "the 1.7 GB graph loads on the first check, not at startup"
+    monkeypatch.setenv("FACT_CHECKER_NLI_CONFIRM", "off")
+    assert module.youtube_processor(SpeechMetadata()).judge.root == primary
+    monkeypatch.setenv("FACT_CHECKER_NLI_CONFIRM", "on")
+    graph.unlink()
+    processor = module.youtube_processor(SpeechMetadata())
+    assert processor.judge.root == primary
+    assert processor.notes == ["Support confirmation is off: the NLI model is not installed."]
 
 
 def test_processor_factory_defaults_both_stages_on_and_reports_missing_artifacts(monkeypatch, tmp_path):

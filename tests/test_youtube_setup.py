@@ -39,8 +39,26 @@ def test_news_inventory_does_not_require_old_offline_index(installed):
     assert before == sorted(str(path) for path in installed.rglob("*"))
 
 
+def test_support_confirmation_is_optional_until_its_contract_and_graph_are_installed(installed):
+    def status():
+        return next(row["status"] for row in inspect_setup(installed, {})["checks"] if row["name"] == "support confirmation")
+
+    assert status() == "warning" and inspect_setup(installed, {})["inventory_ok"]
+    directory = installed / "models/nli_confirm/deberta-v3-large-mfalw"
+    (directory / "onnx").mkdir(parents=True)
+    for name in ("contract.json", "onnx/model.onnx"):
+        (directory / name).write_text("{}")
+    assert status() == "error", "the host would turn it on, so a missing tokenizer must fail before a click"
+    for name in ("config.json", "tokenizer.json"):
+        (directory / name).write_text("{}")
+    assert status() == "ok"
+    assert not any(row["name"] == "support confirmation"
+                   for row in inspect_setup(installed, {"FACT_CHECKER_NLI_CONFIRM": "off"})["checks"])
+
+
 @pytest.mark.parametrize("name,value", [("WEB_SEARCH", "brave"), ("DECOMPOSED", "maybe"),
-                                       ("CONTEXT_REVIEW", "true"), ("CONTEXT_ORDERING", "false"), ("CONCEPTS", "yes")])
+                                       ("CONTEXT_REVIEW", "true"), ("CONTEXT_ORDERING", "false"), ("CONCEPTS", "yes"),
+                                       ("NLI_CONFIRM", "1")])
 def test_invalid_switch_fails_before_click(installed, name, value):
     assert not inspect_setup(installed, {"FACT_CHECKER_" + name: value})["inventory_ok"]
 

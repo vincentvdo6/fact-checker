@@ -37,7 +37,9 @@ If the player has only a partial caption response, it tries video-bound page met
 and refreshes the transcript request metadata without opening YouTube's panels.
 
 The first check loads the local models. News checks need the claim detector;
-sentence-level reading also needs the pair judge and its calibration. The
+sentence-level reading also needs the pair judge and its calibration, and uses the optional
+support-confirming NLI model when it is installed (the first check then takes about 20 seconds
+longer while its 1.7 GB graph loads; later checks ask it about a pair or two per claim). The
 Wikipedia corpus enables optional caption-concept research. Offline checks
 additionally need the Wikipedia index and the offline verdict artifacts.
 The setup check reports missing prerequisites for the selected configuration.
@@ -146,12 +148,25 @@ verdict is composed from those answers by fixed rules: only exact quoted sentenc
 count; a qualifier in the sentence, an unknown claim country or an undated page can
 qualify but never establish; an assertion is established by one independent source
 with a confirmed publication date, which the card names ("one source: rbc.com
-(published 2025-07-09)"); a contrast is established only when both halves are. The
-reliability line above the counted sentences is the measurement that matches what you
-see: on 142 claims written and clicked after the rule was decided (2026-09-15) the reading
-pointed a direction 45 times and pointed the right way 42 times; the three misses were
-single-source contradictions of true claims, so read the quoted sentence before trusting a
-"contradicted". The page shows the
+(published 2025-07-09)"); a contrast is established only when both halves are, and so is
+a claim made of two clauses joined by "but".
+
+A second, larger model confirms the pair judge's near misses. A sentence the pair judge reads
+as stating the assertion, but below its counting band, counts when an NLI model
+(DeBERTa-v3-large trained on MNLI, FEVER, ANLI, LingNLI and WANLI; 1.7 GB under
+`models/nli_confirm`) agrees with at least 0.95 entailment. It only adds supports both models
+agree on: it never vetoes a count, never proposes one from a sentence the pair judge read as
+context, and never touches contradictions. Those variants were tried and added wrong readings.
+Install it with `.venv\Scripts\python.exe -m scripts.install_nli_confirm` (the pinned revision,
+hash-checked); without it, checks run as before and say so. `FACT_CHECKER_NLI_CONFIRM=off`
+disables it.
+
+The reliability line above the counted sentences is the measurement that matches what you
+see: on 105 claims written blind with their truth and clicked on 2026-10-20, the reading
+pointed a direction 30 times and pointed the right way 29 times (the pair judge alone: 21 of
+22); on held-out real captions it pointed the right way 5 of 6 times. Earlier misses were
+mostly single-source contradictions of true claims, so read the quoted sentence before
+trusting a "contradicted". The page shows the
 counted sentences and the strongest bearing ones verbatim with any definition from
 the same paragraph; nothing is paraphrased and no figure appears that is not in a
 quoted sentence. Similar numbers are not labelled as confirming a claim's figure:
