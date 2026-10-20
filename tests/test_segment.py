@@ -30,6 +30,7 @@ def test_a_plain_transcript_splits_on_terminators():
         "The rate fell to 3.5 percent last year.",
         "The U.S. economy added 400,000 jobs in June.",
         "Growth was 2.1 percent vs. 1.8 percent the year before.",
+        "The Supreme Court limited nationwide injunctions in Trump v. CASA in June 2025.",
     ],
 )
 def test_a_terminator_inside_an_abbreviation_or_number_is_not_a_boundary(transcript):

@@ -44,7 +44,7 @@ ABBREVIATIONS = frozenset(
     mr mrs ms dr prof sen rep gov pres sec gen adm capt lt sgt rev hon st
     jr sr inc ltd corp co dept univ assn bros
     jan feb mar apr jun jul aug sept sep oct nov dec
-    vs etc al ca approx est fig no vol pp ed eds cf
+    vs v etc al ca approx est fig no vol pp ed eds cf
     u.s u.k u.n e.g i.e a.m p.m
     """.split()
 )
