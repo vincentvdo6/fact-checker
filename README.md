@@ -34,6 +34,10 @@ over the saved result; the video player is not shown.
 | <img src="docs/demo/jobs-report-card.png" width="260" alt="Card for a jobs-report claim: not established, with relevant CNBC sentences quoted"> | <img src="docs/demo/functional-unemployment-card.png" width="260" alt="Card for a functional unemployment claim: not established, with CBS sentences giving both figures"> | <img src="docs/demo/state-of-the-union-card.png" width="260" alt="Card for a State of the Union claim: reprints of the speech withheld"> |
 | CNBC's "It was the third time in five months that the economy lost jobs" is shown but not counted. The judge read it as stating the claim with 0.83 confidence, below its counting threshold of 0.854. That threshold was fitted on FEVER to a 95% target stated in advance. | CBS gives both of the claim's figures, 24.9% (Ludwig Institute) and 4.1%, in separate sentences. No single sentence states the claim as a whole, so it stays not established. | Six sentences from the published transcript and from articles quoting the speech are recognised as the speaker's own words and set aside. |
 
+These cards predate support confirmation (below). With it, CNBC's sentence on the first card
+is confirmed at 0.998 entailment and the claim reads Supported; the second claim is split at
+its "but" and both halves are supported by CBS.
+
 **On real videos the reading rarely commits, and when it does it is often wrong.** The
 latest run covered eight videos: news segments, a press conference, a press gaggle, a
 debate, a State of the Union address and a Senate hearing. It made 20 clicks and checked
@@ -52,6 +56,23 @@ and set aside; 67 such sentences were withheld in this run. Caption sentences th
 be researched on their own are listed as not checked, with the reason. These are fragments
 like "Last month it was 32,000", a "he" or "they" that names no one, reported speech, and a
 sentence still being spoken at the click. A click took 21 seconds at the median (6–61 s).
+
+**Support confirmation.** The sentence judge often reads a true paraphrase as stating the
+claim just below its counting band. A larger NLI model (DeBERTa-v3-large, trained on five NLI
+datasets) now confirms those near misses, and only those, before they count. It never vetoes
+a count, proposes one from context, or touches contradictions. Each of those variants was
+tried and added wrong readings on held-out claims. The stage was chosen on development sets
+and registered before a single test (`runs/checker-numbers/REGISTRATION.md`, paired replays
+of the same research plans):
+
+| Held-out set | Before: right / wrong | After: right / wrong |
+| --- | --- | --- |
+| 105 written claims, truth fixed before clicking | 21 / 1 | **29 / 1** |
+| 61 real caption claims from 8 unseen videos (35 scorable) | 3 / 2 | **5 / 1** |
+
+The truth labels for captions come from an automated annotator with web search, blind to the
+checker's output, not from people. Coverage on real speech is still low: most claims remain
+not established, usually because retrieval found no page that states them.
 
 ## Findings
 
