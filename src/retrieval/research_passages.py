@@ -8,6 +8,7 @@ source context and cannot establish an assertion just by being near an anchor.
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 
 from src.pipeline.topic_query import content_terms
 from src.retrieval.source_dates import publication_notices
@@ -66,19 +67,33 @@ def source_excerpts(markdown: str, query: str, *, context_query: str = "") -> li
     return [text for _, _, _, _, text in selected]
 
 
-def reading_passages(markdown: str, query: str) -> list[str]:
-    """Keep up to nine complete paragraphs around matching prose or section headings.
+def _bounded_positions(blocks: list[str], notes: set[int], anchors: Sequence[int],
+                       selected: Sequence[int] = ()) -> list[int]:
+    chosen = set(selected)
+    for position in [*selected, *anchors]:
+        if len(chosen) >= 9:
+            return sorted(chosen)
+        for nearby in range(max(0, position - 4), min(position + 5, len(blocks))):
+            if nearby not in notes and _prose(blocks[nearby]):
+                chosen.add(nearby)
+            if len(chosen) >= 9:
+                return sorted(chosen)
+    return sorted(chosen)
 
-    Heading text may locate a definition but is never itself quoted as evidence.
-    reading_window separately carries short qualifications and section context.
-    Measurements and qualifications can precede or follow an anchor, so its window
-    includes four intact blocks in each direction without favoring numeric text.
-    """
+
+def _passage_positions(blocks: list[str], query: str, selected_excerpts: Sequence[str]) -> list[int]:
     terms = set(content_terms(query))
-    if not terms:
-        return []
-    blocks = _blocks(markdown)
     notes, _ = _notes(blocks)
+    selected = []
+    for excerpt in selected_excerpts:
+        position = next((index for index, block in enumerate(blocks)
+                         if block == excerpt and index not in notes and _prose(block)), None)
+        if position is None:
+            raise ValueError("A selected excerpt must be an exact citable source block.")
+        if position not in selected:
+            selected.append(position)
+    if len(selected) > 9:
+        raise ValueError("More selected excerpts than the nine-paragraph reading limit.")
     anchors = []
     for position, text in enumerate(blocks):
         if position in notes:
@@ -90,19 +105,34 @@ def reading_passages(markdown: str, query: str) -> list[str]:
         else:
             visible = _prose(text)
         overlap = terms.intersection(content_terms(visible))
-        if len(overlap) >= min(2, len(terms)):
+        if terms and len(overlap) >= min(2, len(terms)):
             anchors.append((-len(overlap), position))
-    chosen: set[int] = set()
-    for _, position in sorted(anchors):
-        for nearby in range(max(0, position - 4), min(position + 5, len(blocks))):
-            if nearby not in notes and _prose(blocks[nearby]):
-                chosen.add(nearby)
-            if len(chosen) == 9:
-                return [blocks[index] for index in sorted(chosen)]
-    return [blocks[index] for index in sorted(chosen)]
+
+    ordered = [position for _, position in sorted(anchors)]
+    original = _bounded_positions(blocks, notes, ordered)
+    if not selected or set(selected).issubset(original):
+        return original
+
+    # Re-anchor only when the original window omits a selected excerpt.
+    selected_texts = {blocks[position] for position in selected}
+    remaining = [position for position in ordered if blocks[position] not in selected_texts or position in selected]
+    return _bounded_positions(blocks, notes, remaining, selected)
 
 
-def reading_window(markdown: str, query: str) -> dict:
+def reading_passages(markdown: str, query: str, *, selected_excerpts: Sequence[str] = ()) -> list[str]:
+    """Keep up to nine complete paragraphs around matching prose or section headings.
+
+    Heading text may locate a definition but is never itself quoted as evidence.
+    reading_window separately carries short qualifications and section context.
+    Measurements and qualifications can precede or follow an anchor, so its window
+    includes four intact blocks in each direction without favoring numeric text.
+    Selected excerpts must be exact citable blocks; re-anchor only if one is missing.
+    """
+    blocks = _blocks(markdown)
+    return [blocks[index] for index in _passage_positions(blocks, query, selected_excerpts)]
+
+
+def reading_window(markdown: str, query: str, *, selected_excerpts: Sequence[str] = ()) -> dict:
     """Pair citable paragraphs with literal headings and short adjacent qualifications.
 
     All preceding headings travel as section context because the HTML reader does not
@@ -110,9 +140,9 @@ def reading_window(markdown: str, query: str) -> dict:
     distant footnote can qualify a measurement. Context is not independently citable.
     If it cannot fit intact, return a reason so callers cannot use unqualified excerpts.
     """
-    passages = reading_passages(markdown, query)
     blocks = _blocks(markdown)
-    positions = [index for index, text in enumerate(blocks) if text in passages]
+    positions = _passage_positions(blocks, query, selected_excerpts)
+    passages = [blocks[index] for index in positions]
     if not positions:
         return {"passages": [], "context": []}
     if len(markdown) > 2_000_000:

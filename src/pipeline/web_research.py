@@ -264,7 +264,10 @@ class WebResearch:
                         "excerpts": [], "markdown": markdown,
                     })
                 source = documents[aliases[url]]
-                window = reading_window(source["markdown"], assertion["text"])
+                excerpts = ([] if is_context else source_excerpts(
+                    source["markdown"], assertion["text"],
+                    context_query=assertion.get("context_query", assertion["query"])))
+                window = reading_window(source["markdown"], assertion["text"], selected_excerpts=excerpts)
                 if reason := window.get("unavailable_reason"):
                     errors.append(reason)
                     continue
@@ -275,9 +278,7 @@ class WebResearch:
                     anchors = {term for term in content_terms(context.claim.text) if term.isalpha()}
                     if not anchors.intersection(content_terms(visible)):
                         continue
-                excerpts = (window["passages"] if is_context else
-                            source_excerpts(source["markdown"], assertion["text"],
-                                            context_query=assertion.get("context_query", assertion["query"])))
+                    excerpts = window["passages"]
                 if excerpts:
                     if window["context"]:
                         source["reading_context"] = list(dict.fromkeys([*source.get("reading_context", []), *window["context"]]))

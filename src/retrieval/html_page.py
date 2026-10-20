@@ -16,6 +16,7 @@ from src.retrieval.web_sources import SourceUnavailable
 _VOID = frozenset("area base br col embed hr img input link meta param source track wbr".split())
 _BLOCKS = frozenset("main article section div p li ul ol h1 h2 h3 h4 h5 h6 pre blockquote tr".split())
 _OMIT = frozenset("script style noscript nav header footer aside figcaption svg form button table".split())
+_WEBFLOW_HIDDEN = frozenset(("w-dyn-hide", "w-dyn-bind-empty", "w-condition-invisible"))
 _ANNOTATIONS = {"sup": ("^(", ")"), "sub": ("_(", ")"),
                 "del": ("[deleted: ", "]"), "ins": ("[inserted: ", "]")}
 
@@ -34,14 +35,19 @@ class HTMLPage(HTMLParser):
         self.jsonld_current: list[str] | None = None
         self.active_regions: dict[int, tuple[str, int]] = {}
         self.regions: dict[str, list[tuple[int, int]]] = {"body": [], "article": [], "main": []}
+        self.webflow = False
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         values = dict(attrs)
+        if tag == "html" and values.get("data-wf-site") and values.get("data-wf-page"):
+            self.webflow = True
         if (tag == "script" and (values.get("type") or "").lower() == "application/ld+json"
                 and not (self.stack and self.stack[-1][1])):
             self.jsonld_current = []
+        # Webflow's generated stylesheet declares these exact class tokens display:none!important.
         hidden = (bool(self.stack and self.stack[-1][1]) or tag in _OMIT
                   or "hidden" in values or values.get("aria-hidden") == "true"
+                  or (self.webflow and bool(_WEBFLOW_HIDDEN.intersection((values.get("class") or "").split())))
                   or bool(re.search(r"(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*hidden)\s*(?:!important\s*)?(?:;|$)",
                                     values.get("style") or "", re.I)))
         if tag == "meta" and not hidden:

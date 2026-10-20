@@ -9,6 +9,8 @@ from src.pipeline.transcript import ClaimContext, TranscriptUpdate
 from src.pipeline.web_research import WebResearch, publication_note, research_plan, source_excerpts
 from src.retrieval.search_contract import valid_query
 from src.retrieval.web_sources import SourceUnavailable, public_url
+from src.verdict.chain import research_packet
+from src.verdict.reading import reading_packet
 
 
 def context(text="We don't have a labor shortage. We have a good job shortage.", preceding=()):
@@ -568,6 +570,35 @@ def test_assertion_pages_carry_their_reading_passages_for_the_sentence_level_sta
     assert "There are too many open jobs without people to fill them, a labor shortage by any measure." in passages
     assert source["excerpts"][0] in passages and len(passages) <= 9
     assert "context_concepts" not in source and "reading_passages" not in source
+
+
+def test_selected_excerpt_keeps_its_own_nearby_scope_on_a_long_page():
+    early = "Battery storage capacity increased in mainland factories according to the agency's annual report."
+    chosen = "Battery storage capacity increased at island facilities according to the agency's annual report."
+    qualifier = "Only installations observed before 2008 are included."
+    background = [f"Section {index} describes administrative arrangements for collecting and publishing the annual report."
+                  for index in range(12)]
+
+    class Long(Sources):
+        def scrape(self, url):
+            self.scraped.append(url)
+            return {"markdown": "\n\n".join([early, *background, chosen, qualifier]),
+                    "metadata": {"sourceURL": url, "publishedTime": "2025-05-01"}}
+
+    prior = TranscriptUpdate("prior", 0, "Battery storage at island facilities is the topic of this discussion.", 20, 29, True)
+    sources = Long()
+    claim = "Battery storage capacity increased."
+    plan = WebResearch(sources).review(context(claim, (prior,)), SpeechMetadata(spoken_at="2025-10-20"))
+    source = plan["sources"][0]
+    assert source["excerpts"] == [chosen]
+    assert chosen in source["assertion_passages"] and len(source["assertion_passages"]) <= 9
+    assert qualifier in source["reading_context"]
+    assert source["id"] == "source-1" and plan["assertions"][0]["source_ids"] == ["source-1"]
+    assert plan["assertions"][0]["text"] == claim and plan["assertions"][0]["status"] == "unresolved"
+    assert sources.scraped == ["https://example.org/report"]
+    reading = reading_packet(research_packet(claim, plan))
+    assert qualifier in reading["sources"][0]["reading_context"]
+    assert any(unit["text"] == chosen for passage in reading["passages"] for unit in passage["units"])
 
 
 def test_a_declared_speech_date_is_the_boundary_and_is_recorded_as_supplied():

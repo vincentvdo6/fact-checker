@@ -123,6 +123,46 @@ def test_html_preserves_literal_text_and_conflicting_dates_without_site_rules():
     assert page["markdown"] == "Quoted source & qualifications.\n\n[Methodology](https://example.org/methodology)"
 
 
+def test_webflow_visibility_classes_omit_hidden_widgets_but_keep_visible_article():
+    parser = HTMLPage("https://example.org/report")
+    parser.feed('''<html data-wf-site="site" data-wf-page="page"><body>
+    <article><p>The measured rate was 24.3% in May.</p>
+    <div class="w-condition-invisible"><p>An unrelated hidden teaser.</p></div>
+    <div class="w-dyn-hide"><p>A hidden duplicate of the report.</p></div>
+    <div class="w-dyn-bind-empty"><p>Hidden empty binding text.</p></div>
+    <p>Please Note: the measurement was later revised to 24.2%.</p>
+    <p class="not-w-condition-invisible">A visible sibling remains.</p></article>
+    </body></html>''')
+    assert parser.page()["markdown"] == ("The measured rate was 24.3% in May.\n\n"
+                                         "Please Note: the measurement was later revised to 24.2%.\n\n"
+                                         "A visible sibling remains.")
+
+
+def test_webflow_visibility_tokens_require_platform_markup_and_exact_class():
+    parser = HTMLPage("https://example.org/report")
+    parser.feed('''<p class="w-condition-invisible">No Webflow marker, so class semantics are unknown.</p>
+    <p class="not-w-dyn-hide">A similarly named visible class.</p>''')
+    assert "No Webflow marker" in parser.page()["markdown"]
+    assert "similarly named visible class" in parser.page()["markdown"]
+    for root in ('<html lang="en">', '<html data-wf-site="site">', '<html data-wf-page="page">'):
+        parser = HTMLPage("https://example.org/report")
+        parser.feed(f'{root}<p class="w-dyn-hide">Both markers are required.</p></html>')
+        assert parser.page()["markdown"] == "Both markers are required.", root
+
+
+def test_webflow_hidden_class_in_joined_tokens_and_chunked_html_feed():
+    parser = HTMLPage("https://example.org/report")
+    chunks = [
+        '<html data-wf-site="site" data-wf-page="page"><article><p>Measured 24.3% in May.</p>',
+        '<div class="visible w-condition-',
+        'invisible other"><p>Hidden unrelated observation.</p></div>',
+        '<p class="w-condition-invisible-copy">Visible publication caveat.</p></article></html>',
+    ]
+    for chunk in chunks:
+        parser.feed(chunk)
+    assert parser.page()["markdown"] == "Measured 24.3% in May.\n\nVisible publication caveat."
+
+
 def test_html_encoding_is_explicit_and_non_html_is_rejected():
     assert decode_html(PageResponse("", b"<p>old \x95 report</p>", headers(Content_Type="text/html"))) == "<p>old • report</p>"
     with pytest.raises(SourceUnavailable, match="HTML"):
