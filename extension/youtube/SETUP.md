@@ -33,6 +33,8 @@ passing does not establish model integrity, browser connectivity or accuracy.
 
 Visible **CC can stay off** and the transcript panel can stay closed. The checker
 requests available English subtitle data in the background when you check a claim.
+If the player has only a partial caption response, it tries video-bound page metadata
+and refreshes the transcript request metadata without opening YouTube's panels.
 
 The first check loads the local models. News checks need the claim detector;
 sentence-level reading also needs the pair judge and its calibration. The
@@ -93,20 +95,22 @@ user environment, then fully exit and restart the browser. Remove that variable
 (or set it to `news`) to restore the default. Local-only checks use the June 2017
 Wikipedia corpus, which cannot establish recent events.
 
-## Claims are about
+## Automatic context and corrections
 
-The checker never infers which country a claim is about: neither the news edition it
-searches nor a source's own scope can establish that, and a video rarely says. Without a
-country nothing can be established -- every count is reported as qualified. The panel's
-**Claims are about** field lets you declare it for the video you are watching (a short
-place name; suggestions are offered). It is sent with each check, used in the searches,
-and shown on every card as supplied by you. Leave it unset and the card says so. The
-setting is kept in the extension's local storage (the `storage` permission) so it survives
-reloads; it goes nowhere but the local checker. **Spoken on** works the same way for the date
-the claims were made, when you know it: it becomes the search boundary (a debate uploaded
-weeks after it was recorded is then not checked against pages published in between), can
-never be later than the video's publication date, and is shown on every card as supplied by
-you. It is not stored.
+Each check looks for a single explicit country in its recent captions, falling back to
+the video title. Conflicting countries in the excerpt stay unknown. This is a detected
+context hint, shown with its origin; it can be wrong when a place is only mentioned in
+passing. The viewer's location, channel location and search edition never supply it.
+
+The publication date comes from metadata belonging to the current video. The recording
+date is separate: it requires an explicitly labelled date in the title or description,
+or a completed broadcast wholly within one UTC day. Unknown recording dates stay unknown;
+an upload date alone does not say when a speech happened. These dates bound source searches.
+
+**Context** contains optional **Claims are about** and **Spoken on** corrections. Leave
+them blank for automatic detection. Corrections are labelled as supplied by you and saved
+locally for that video only. Old global country settings are ignored. Country and date
+context reach the local checker and can be included in its public search queries.
 
 ## Sentence-level reading
 

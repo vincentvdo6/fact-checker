@@ -27,9 +27,12 @@ class SpeechMetadata:
     country: str = ""
     spoken_at: str = ""
     source_published_at: str = ""
+    country_basis: str = ""
+    spoken_at_basis: str = ""
 
     def __post_init__(self) -> None:
-        for value in (self.source, self.country, self.spoken_at, self.source_published_at):
+        for value in (self.source, self.country, self.spoken_at, self.source_published_at,
+                      self.country_basis, self.spoken_at_basis):
             if not isinstance(value, str) or len(value) > 2048:
                 raise ValueError("speech metadata must be strings of at most 2048 characters")
             value.encode("utf-8")

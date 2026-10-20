@@ -73,11 +73,11 @@ def research_plan(context: ClaimContext, metadata: SpeechMetadata) -> dict:
     return {"assertions": assertions, "context": nearby, "gaps": missing, "scope_limits": list(missing),
             "claim_scope": {"country": metadata.country, "spoken_at": metadata.spoken_at,
                             "source_published_at": metadata.source_published_at,
-                            # A country or speech date only ever arrives by declaration; nothing here infers one.
-                            "country_basis": "supplied by the viewer" if metadata.country else "",
-                            "spoken_at_basis": "supplied by the viewer" if metadata.spoken_at else ""},
+                            "country_basis": (metadata.country_basis or "supplied by the viewer") if metadata.country else "",
+                            "spoken_at_basis": (metadata.spoken_at_basis or "supplied by the viewer") if metadata.spoken_at else ""},
             "search_cutoff": cutoff,
-            "cutoff_basis": "Supplied speech date" if cutoff and cutoff == speech_day
+            "cutoff_basis": (f"Speech date: {metadata.spoken_at_basis}" if metadata.spoken_at_basis
+                             else "Supplied speech date") if cutoff and cutoff == speech_day
             else "Video publication date; the speech may be older" if cutoff else "Unknown"}
 
 

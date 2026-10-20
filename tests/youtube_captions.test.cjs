@@ -24,13 +24,17 @@ function reader({
   isLiveContent = false,
   liveBroadcastDetails = undefined,
   audioTracks = [],
+  partialPlayer = false,
+  initialPlayer = undefined,
+  pageMeta = {},
+  nextData = null,
   time = 20,
 } = {}) {
   const videoId = "abcdefghijk";
   const player = {
     classList: { contains: () => ad },
     getOption: () => ({ languageCode: language }),
-    getPlayerResponse: () => ({
+    getPlayerResponse: () => partialPlayer ? {videoDetails:{videoId,title:"Fixture"}} : ({
       videoDetails: {
         videoId: changed ? "0123456789_" : videoId,
         title: "Fixture",
@@ -60,6 +64,7 @@ function reader({
     },
     window: {
       ytInitialData: initial,
+      ytInitialPlayerResponse: initialPlayer,
       ytcfg: {
         get: () => ({
           client: { clientName: "WEB", clientVersion: "fixture" },
@@ -79,7 +84,7 @@ function reader({
           : selector === "button"
             ? [showTranscript]
             : [],
-      querySelector: (selector) =>
+      querySelector: (selector) => pageMeta[selector] ? {getAttribute:()=>pageMeta[selector]} :
         selector === "video.html5-main-video"
           ? { currentTime: time, textTracks: native }
           : selector === "ytd-transcript-renderer #footer"
@@ -98,8 +103,8 @@ function reader({
         });
         onBackground(context);
         return {
-          ok: background !== null,
-          text: async () => JSON.stringify(background),
+          ok: String(url).includes("/next?") ? nextData !== null : background !== null,
+          text: async () => JSON.stringify(String(url).includes("/next?") ? nextData : background),
         };
       }
       if (fetchError) throw new Error("Caption endpoint failed");
@@ -498,7 +503,68 @@ test("never fetch arbitrary caption URLs or check advertisements and stale playe
     tracks: [{ ...track, baseUrl: "https://other.example/captions" }],
   });
   assert.match((await app.read()).error, /Captions could not/);
-  assert.equal(app.requests.length, 0);
+  assert.deepEqual(app.requests, ["/youtubei/v1/next?prettyPrint=false"]);
   assert.match((await reader({ ad: true }).read()).error, /advertisement/);
   assert.match((await reader({ changed: true }).read()).error, /video changed/);
+});
+
+test("a partial player response does not mask current initial captions and metadata", async () => {
+  const initialPlayer = {
+    videoDetails: {videoId:"abcdefghijk",shortDescription:"Recorded on 2025-07-15."},
+    captions: {playerCaptionsTracklistRenderer:{captionTracks:[track]}},
+    microformat: {playerMicroformatRenderer:{publishDate:"2025-07-20"}},
+  };
+  const fields = {partialPlayer:true,initialPlayer,language:"",events:[{tStartMs:10000,dDurationMs:5000,segs:[{utf8:"The law passed."}]}]};
+  const app = reader(fields), result = await app.read();
+  assert.equal(result.source,"track");
+  assert.equal(result.source_published_at,"2025-07-20");
+  assert.match(result.video_metadata.description,/Recorded on/);
+  assert.deepEqual(app.clicks,[]);
+  initialPlayer.videoDetails.videoId = "0123456789_";
+  const stale = reader(fields);
+  assert.ok((await stale.read()).error);
+  assert.ok(stale.requests.every(url=>!url.includes("timedtext")));
+});
+
+test("DOM publication dates require both identifier and canonical URL to match", async () => {
+  const pageMeta = {'meta[itemprop="identifier"]':"abcdefghijk",'link[rel="canonical"]':"https://www.youtube.com/watch?v=abcdefghijk",
+    'meta[itemprop="datePublished"]':"2025-07-20T08:00:05-07:00"};
+  const fields = {pageMeta,native:[{language:"en",cues:[{startTime:10,endTime:15,text:"The law passed."}]}]};
+  assert.equal((await reader(fields).read()).source_published_at,"2025-07-20");
+  for (const key of ['meta[itemprop="identifier"]','link[rel="canonical"]']) {
+    assert.equal((await reader({...fields,pageMeta:{...pageMeta,[key]:"stale"}}).read()).source_published_at,"");
+  }
+});
+
+test("CC-off capture refreshes missing watch metadata without opening the transcript", async () => {
+  const fields = {partialPlayer:true,language:"",nextData:unloadedPanel(),background:modernData()};
+  const app = reader(fields), result = await app.read();
+  assert.equal(result.source,"transcript");
+  assert.equal(result.captions[0].text,"The law passed in 2010.");
+  assert.deepEqual(app.posts.map(post=>post.url),["/youtubei/v1/next?prettyPrint=false","/youtubei/v1/get_transcript?prettyPrint=false"]);
+  assert.equal(app.posts[0].body.videoId,"abcdefghijk");
+  assert.deepEqual(app.clicks,[]);
+  const stale = unloadedPanel();
+  stale.currentVideoEndpoint.watchEndpoint.videoId = "0123456789_";
+  const rejected = reader({...fields,nextData:stale});
+  assert.ok((await rejected.read()).error);
+  assert.equal(rejected.posts.length,1);
+});
+
+test("only a completed, ordered, single-day broadcast supplies a recording day", async () => {
+  for (const [startTimestamp,endTimestamp,expected] of [
+    ["2025-07-20T12:00:00Z","2025-07-20T13:00:00Z","2025-07-20"],
+    ["2025-07-20T12:00:00Z",undefined,""],
+    ["2025-07-20T12:00:00Z","2025-07-20T11:00:00Z",""],
+    ["2025-07-20T23:00:00Z","2025-07-21T01:00:00Z",""],
+    ["2025-02-30T12:00:00Z","2025-02-30T13:00:00Z",""],
+    ["2025-07-20T12:00:00","2025-07-20T13:00:00",""],
+  ]) {
+    const app = reader({isLiveContent:true,liveBroadcastDetails:{startTimestamp,endTimestamp},
+      native:[{language:"en",cues:[{startTime:10,endTime:15,text:"The law passed."}]}]});
+    assert.equal((await app.read()).video_metadata.stream_day,expected);
+  }
+  const premiere = reader({liveBroadcastDetails:{startTimestamp:"2025-07-20T12:00:00Z",endTimestamp:"2025-07-20T13:00:00Z"},
+    native:[{language:"en",cues:[{startTime:10,endTime:15,text:"The law passed."}]}]});
+  assert.equal((await premiere.read()).video_metadata.stream_day,"","a premiere is not necessarily a live recording");
 });

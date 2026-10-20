@@ -45,11 +45,13 @@ class CaptionExcerpt:
     language: str
     source: str
     source_published_at: str = ""
-    claim_country: str = ""     # declared by the viewer for this video; never inferred from sources or the news edition
-    spoken_at: str = ""         # declared by the viewer; the search boundary when given, never later than the upload
+    claim_country: str = ""
+    spoken_at: str = ""         # a stated recording date, never inferred from upload date
+    country_basis: str = ""
+    spoken_at_basis: str = ""
 
 
-COUNTRY = re.compile(r"[A-Za-z][A-Za-z .'-]{1,39}")
+COUNTRY = re.compile(r"[^\W\d_](?:[^\W\d_]|[ .’'&-]){1,59}")
 
 
 def caption_excerpt(payload: dict) -> CaptionExcerpt:
@@ -73,6 +75,13 @@ def caption_excerpt(payload: dict) -> CaptionExcerpt:
     if not isinstance(country, str) or (country and not COUNTRY.fullmatch(country.strip())):
         raise ValueError("The claim country must be a short place name, or left unset.")
     country = " ".join(country.split())
+    country_basis = payload.get("country_basis", "")
+    spoken_basis = payload.get("spoken_at_basis", "")
+    if country_basis not in ("", "supplied by the viewer", "detected from captions", "detected from the video title"):
+        raise ValueError("Invalid country context basis.")
+    if spoken_basis not in ("", "supplied by the viewer", "recording date stated in the video description or title",
+                             "YouTube broadcast metadata (UTC)"):
+        raise ValueError("Invalid speech date context basis.")
     spoken_at = payload.get("spoken_at", "")
     if not isinstance(spoken_at, str) or (spoken_at and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", spoken_at)):
         raise ValueError("The speech date must be a calendar day (YYYY-MM-DD), or left unset.")
@@ -117,7 +126,7 @@ def caption_excerpt(payload: dict) -> CaptionExcerpt:
     if not text or len(text) > 4000:
         raise ValueError("This caption excerpt is too long to check safely. Try a shorter section.")
     return CaptionExcerpt(video_id, title, clicked_at, selected[0][0], latest_end, text, language, source, published, country,
-                          spoken_at)
+                          spoken_at, country_basis if country else "", spoken_basis if spoken_at else "")
 
 
 def _switch(name: str, default: str = "on") -> bool:
@@ -194,7 +203,8 @@ class YouTubeChecker:
         excerpt = caption_excerpt(payload)
         metadata = SpeechMetadata(source=f"https://www.youtube.com/watch?v={excerpt.video_id}",
                                   country=excerpt.claim_country, spoken_at=excerpt.spoken_at,
-                                  source_published_at=excerpt.source_published_at)
+                                  source_published_at=excerpt.source_published_at,
+                                  country_basis=excerpt.country_basis, spoken_at_basis=excerpt.spoken_at_basis)
         if self.processor is None:
             self.processor = self.factory(metadata)
         begin_check = getattr(self.processor, "begin_check", None)
@@ -225,6 +235,7 @@ class YouTubeChecker:
                 "language": excerpt.language, "rows": rows, "omitted_claims": len(sentences) - len(rows),
                 "source_published_at": excerpt.source_published_at, "claim_country": excerpt.claim_country,
                 "spoken_at": excerpt.spoken_at,
+                "country_basis": excerpt.country_basis, "spoken_at_basis": excerpt.spoken_at_basis,
                 "scope": f"English captions; local Wikipedia June 2017; {web_scope}; YouTube accuracy unmeasured."}
 
     def close(self) -> None:

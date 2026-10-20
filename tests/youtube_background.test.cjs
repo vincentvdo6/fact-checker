@@ -5,7 +5,8 @@ const { test } = require("node:test");
 const vm = require("node:vm");
 
 const code = readFileSync(join(__dirname, "../extension/youtube/background.js"), "utf8")
-  .replace('import { readCaptions } from "./captions.js";', "");
+  .replace(/^import .*;\r?\n/gm, "");
+const contextCode = readFileSync(join(__dirname, "../extension/youtube/context.js"), "utf8").replaceAll("export function", "function");
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 
 function event() {
@@ -45,7 +46,7 @@ function fixture({ postError = null } = {}) {
       executeScript: (options) => new Promise((resolve, reject) => captures.push({ options, resolve, reject })),
     },
   };
-  vm.runInNewContext(code, {
+  vm.runInNewContext(contextCode + "\n" + code, {
     chrome, readCaptions: () => {},
     crypto: { randomUUID: () => `request-${++sequence}` },
     setTimeout: (callback, ms) => {
@@ -58,20 +59,20 @@ function fixture({ postError = null } = {}) {
   });
   return {
     captures, ports, timers, scheduled,
-    send(tabId = 1, type = "check-captions") {
+    send(tabId = 1, type = "check-captions", fields = {}) {
       const replies = [];
       let resolve;
       const response = new Promise((done) => { resolve = done; });
       const accepted = chrome.runtime.onMessage.emit(
-        { type, video_id: "abcdefghijk", visible: [] },
+        { type, video_id: "abcdefghijk", visible: [], ...fields },
         { tab: { id: tabId }, frameId: 0, url: "https://www.youtube.com/watch?v=abcdefghijk" },
         (reply) => { replies.push(reply); resolve(reply); },
       );
       return { response, replies, accepted };
     },
-    captured(index, text = "A completed claim.") {
+    captured(index, text = "A completed claim.", fields = {}) {
       captures[index].resolve([{ result: {
-        video_id: "abcdefghijk", captions: [{ start: 1, end: 2, text }],
+        video_id: "abcdefghijk", captions: [{ start: 1, end: 2, text }], ...fields,
       } }]);
     },
     dropped(port, message) {
@@ -98,6 +99,25 @@ test("a new same-tab check rejects old caption capture before it starts native w
   assert.equal((await current.response).result.checked, true);
   assert.equal(old.replies.length, 1);
   assert.equal(app.timers.size, 0);
+});
+
+test("automatic context and explicit corrections reach the native host with their basis", async () => {
+  for (const [correction,country,date,basis] of [
+    [{},"Canada","2025-07-15","detected from captions"],
+    [{claim_country:"France",spoken_at:"2025-07-14"},"France","2025-07-14","supplied by the viewer"],
+  ]) {
+    const app = fixture(), check = app.send(1,"check-captions",correction);
+    app.captured(0,"Canada passed the law.",{source_published_at:"2025-07-20",video_metadata:{description:"Recorded on July 15, 2025."}});
+    await flush();
+    const [port] = app.ports, [request] = port.posts, {payload} = request;
+    assert.equal(payload.claim_country,country);
+    assert.equal(payload.country_basis,basis);
+    assert.equal(payload.spoken_at,date);
+    assert.equal(payload.spoken_at_basis,correction.spoken_at ? basis : "recording date stated in the video description or title");
+    assert.equal(payload.video_metadata,undefined,"the full description is not sent to the local checker");
+    port.onMessage.emit({id:request.id,result:{}});
+    await check.response;
+  }
 });
 
 test("late old capture failures cannot reject a newer native request", async () => {

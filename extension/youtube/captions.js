@@ -19,8 +19,9 @@ export async function readCaptions(observed = {}) {
     if (player.classList.contains("ad-showing"))
       throw new Error("Wait until the advertisement has finished.");
     const time = video.currentTime;
-    const response =
-      player.getPlayerResponse?.() || window.ytInitialPlayerResponse;
+    const currentResponse = player.getPlayerResponse?.();
+    const initialResponse = window.ytInitialPlayerResponse;
+    const response = currentResponse || initialResponse;
     if (
       response?.videoDetails?.videoId &&
       response.videoDetails.videoId !== videoId
@@ -30,11 +31,16 @@ export async function readCaptions(observed = {}) {
       0,
       500,
     );
-    const liveOrigin = response?.videoDetails?.isLiveContent
-      || response?.videoDetails?.isLive
-      || response?.microformat?.playerMicroformatRenderer?.liveBroadcastDetails;
-    const published = response?.videoDetails?.videoId === videoId && !liveOrigin
-      ? response.microformat?.playerMicroformatRenderer?.publishDate
+    const boundResponses = [currentResponse, initialResponse].filter(item => item?.videoDetails?.videoId === videoId);
+    const microformats = boundResponses.map(item => item.microformat?.playerMicroformatRenderer).filter(Boolean);
+    const liveOrigin = boundResponses.some(item => item.videoDetails.isLiveContent || item.videoDetails.isLive)
+      || microformats.some(item => item.liveBroadcastDetails);
+    const meta = (name) => document.querySelector(`meta[itemprop="${name}"]`)?.getAttribute("content") || "";
+    const domBound = meta("identifier") === videoId
+      && document.querySelector('link[rel="canonical"]')?.getAttribute("href") === `https://www.youtube.com/watch?v=${videoId}`;
+    const published = !liveOrigin
+      ? microformats.map(item => item.publishDate || item.uploadDate).find(Boolean)
+        || (domBound ? meta("datePublished") || meta("uploadDate") : "")
       : "";
     const publishedDate = typeof published === "string" ? published.slice(0, 10) : "";
     const sourcePublishedAt = /^\d{4}-\d{2}-\d{2}$/.test(publishedDate)
@@ -43,10 +49,20 @@ export async function readCaptions(observed = {}) {
       && !Number.isNaN(Date.parse(publishedDate))
       && new Date(publishedDate).toISOString().slice(0, 10) === publishedDate
       ? publishedDate : "";
+    function utcDay(value) {
+      if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/.test(value)) return "";
+      const day = value.slice(0, 10), calendar = new Date(day);
+      if (Number.isNaN(calendar.valueOf()) || calendar.toISOString().slice(0, 10) !== day) return "";
+      const date = new Date(value);
+      return Number.isNaN(date.valueOf()) ? "" : date.toISOString().slice(0, 10);
+    }
+    const broadcast = microformats.find(item => item.liveBroadcastDetails)?.liveBroadcastDetails;
+    const streamDay = utcDay(broadcast?.startTimestamp);
     const active = player.getOption?.("captions", "track");
     const activeLanguage =
       active?.translationLanguage?.languageCode || active?.languageCode || "";
-    const tracklist = response?.captions?.playerCaptionsTracklistRenderer;
+    const tracklist = boundResponses.map(item => item.captions?.playerCaptionsTracklistRenderer)
+      .find(item => item?.captionTracks?.length);
     const tracks = tracklist?.captionTracks || [];
     const english = (language) => /^en(?:-|$)/.test(language || "");
     const recent = (cues) =>
@@ -74,6 +90,13 @@ export async function readCaptions(observed = {}) {
         language,
         source,
         source_published_at: sourcePublishedAt,
+        video_metadata: {
+          description: (boundResponses.find(item => item.videoDetails.shortDescription)?.videoDetails.shortDescription || "").slice(0, 6000),
+          // A completed broadcast wholly within one UTC day supplies a speech date, not an upload-date guess.
+          stream_day: boundResponses.some(item => item.videoDetails.isLiveContent === true)
+            && streamDay && streamDay === utcDay(broadcast?.endTimestamp)
+            && Date.parse(broadcast.endTimestamp) >= Date.parse(broadcast.startTimestamp) ? streamDay : "",
+        },
       };
     }
     const candidates = [...tracks].sort(
@@ -138,14 +161,11 @@ export async function readCaptions(observed = {}) {
     }
     async function modernTranscript() {
       const watch = document.querySelector("ytd-watch-flexy")?.data;
-      const initial =
+      let initial =
         watch?.currentVideoEndpoint?.watchEndpoint?.videoId === videoId
           ? watch
           : window.ytInitialData;
-      if (initial?.currentVideoEndpoint?.watchEndpoint?.videoId !== videoId) {
-        failures.add("Transcript metadata is not ready for this video.");
-        return null;
-      }
+      const context = window.ytcfg?.get?.("INNERTUBE_CONTEXT");
       const items = [],
         endpoints = [],
         panels = [];
@@ -186,7 +206,28 @@ export async function readCaptions(observed = {}) {
           panels.push(panel.globalConfiguration.params);
         for (const child of Object.values(value)) walk(child, depth + 1);
       }
-      walk(initial.engagementPanels);
+      if (initial?.currentVideoEndpoint?.watchEndpoint?.videoId === videoId) walk(initial.engagementPanels);
+      // CC-off players may expose neither transcript commands nor a current watch response yet.
+      if (!endpoints.length && !panels.length && context?.client?.clientName && context.client.clientVersion) {
+        try {
+          const next = await fetch("/youtubei/v1/next?prettyPrint=false", {
+            method: "POST", credentials: "include", redirect: "error",
+            headers: { "Content-Type": "application/json" }, signal: AbortSignal.timeout(5000),
+            body: JSON.stringify({ context, videoId }),
+          });
+          const body = next.ok ? await next.text() : "";
+          const fresh = body && body.length <= 8000000 ? JSON.parse(body) : null;
+          if (fresh?.currentVideoEndpoint?.watchEndpoint?.videoId === videoId) {
+            initial = fresh;
+            visited = 0;
+            walk(initial.engagementPanels);
+          }
+        } catch { failures.add("Transcript metadata refresh failed or timed out."); }
+      }
+      if (initial?.currentVideoEndpoint?.watchEndpoint?.videoId !== videoId) {
+        failures.add("Transcript metadata is not ready for this video.");
+        return null;
+      }
       // The transcript endpoint carries the video ID and its selected caption track.
       function fields(encoded) {
         if (typeof encoded !== "string" || encoded.length > 16384)
@@ -256,7 +297,6 @@ export async function readCaptions(observed = {}) {
         }
       }
       if (!items.length) {
-        const context = window.ytcfg?.get?.("INNERTUBE_CONTEXT");
         const requests = [];
         // Dubbed audio may advertise many subtitle languages while every audio track defaults to English.
         const audioTracks = tracklist?.audioTracks || [];

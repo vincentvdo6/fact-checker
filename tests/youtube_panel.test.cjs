@@ -60,7 +60,7 @@ const descendants = (element) => [
   ...element.children.flatMap(descendants),
   ...(element.shadow ? descendants(element.shadow) : []),
 ];
-function fixture(initialStorage = {}) {
+function fixture(initialStorage = {}, deferStorage = false) {
   const root = new Element("html"),
     below = new Element("div"),
     sidebar = new Element("div"),
@@ -78,6 +78,7 @@ function fixture(initialStorage = {}) {
     resolve,
     caption = "";
   const requests = [];
+  const storageReads = [];
   const stored = { ...initialStorage };
   const context = vm.createContext({
     URL,
@@ -99,7 +100,7 @@ function fixture(initialStorage = {}) {
       storage: {
         local: {
           set: (values) => Object.assign(stored, values),
-          get: (key, callback) => callback({ [key]: stored[key] }),
+          get: (key, callback) => deferStorage ? storageReads.push(() => callback({[key]:stored[key]})) : callback({ [key]: stored[key] }),
         },
       },
       runtime: {
@@ -128,6 +129,7 @@ function fixture(initialStorage = {}) {
     location,
     requests,
     stored,
+    storageReads,
     below,
     sidebar,
     panels,
@@ -616,7 +618,7 @@ test("each assertion keeps its ranked citations and its own reading regardless o
 test("a viewer-declared claim country travels with the check and is shown as supplied by the viewer", async () => {
   const app = fixture();
   app.open();
-  assert.equal(app.requests[0].claim_country, "", "nothing is inferred; unset until the viewer says");
+  assert.equal(app.requests[0].claim_country, "", "an empty correction lets the background detect context");
   assert.equal(app.requests[0].spoken_at, "");
   const dateInput = descendants(app.root).find(element => element.tag === "input" && element.type === "date");
   assert.equal(dateInput.attributes["aria-label"], "Date the claims were spoken, if known");
@@ -646,20 +648,65 @@ test("a viewer-declared claim country travels with the check and is shown as sup
   app.open();
   app.reply({result: {...result([]).result, claim_country: ""}});
   await flush();
-  assert.match(text(app.root), /Claim country not set; nothing can be established without it\./);
+  assert.match(text(app.root), /Country could not be detected confidently/);
   input.value = "Canada";
   input.onchange();
-  assert.equal(app.stored.claim_country, "Canada", "the declaration is kept locally");
+  assert.equal(app.stored["context:abcdefghijk"].country, "Canada", "the declaration is kept for this video");
   input.value = "<nope>";
   input.onchange();
-  assert.equal(app.stored.claim_country, "", "only a valid place name is kept");
+  assert.equal(app.stored["context:abcdefghijk"].country, "", "only a valid place name is kept");
 });
 
-test("a stored claim country is restored into the field when the panel is built", () => {
-  const app = fixture({ claim_country: "Canada" });
+test("corrections are restored only for their video and old global country settings are ignored", () => {
+  const app = fixture({ claim_country: "Canada", "context:abcdefghijk": {country:"Curaçao",spoken:"2025-07-15"} });
   app.open();
-  assert.equal(descendants(app.root).find(element => element.tag === "input" && element.type !== "date").value, "Canada");
-  assert.equal(app.requests[0].claim_country, "Canada");
+  const inputs = descendants(app.root).filter(element => element.tag === "input");
+  assert.equal(inputs[0].value, "Curaçao");
+  assert.equal(app.requests[0].claim_country, "Curaçao");
+  assert.equal(app.requests[0].spoken_at, "2025-07-15");
+  app.location.href = "https://www.youtube.com/watch?v=0123456789_";
+  app.tick();
+  app.open();
+  assert.equal(app.requests[1].claim_country, "");
+  assert.equal(app.requests[1].spoken_at, "");
+  assert.equal(inputs[0].value, "");
+  assert.equal(inputs[1].value, "");
+  app.location.href = "https://www.youtube.com/watch?v=abcdefghijk";
+  app.tick();
+  assert.equal(inputs[0].value, "Curaçao");
+  assert.equal(inputs[1].value, "2025-07-15");
+});
+
+test("an immediate check waits for saved context and late storage cannot overwrite a correction", async () => {
+  const app = fixture({"context:abcdefghijk":{country:"Canada",spoken:"2025-07-15"}},true);
+  app.open();
+  assert.equal(app.requests.length,0);
+  app.storageReads[0]();
+  await flush();
+  assert.equal(app.requests[0].claim_country,"Canada");
+  assert.equal(app.requests[0].spoken_at,"2025-07-15");
+  const pending = fixture({"context:abcdefghijk":{country:"Canada"}},true);
+  const input = descendants(pending.root).find(element=>element.tag === "input");
+  input.value = "France";
+  input.oninput();
+  pending.storageReads[0]();
+  assert.equal(input.value,"France");
+});
+
+test("automatic context is attributed and does not become a saved manual correction", async () => {
+  const app = fixture();
+  app.open();
+  app.reply({result:{...result([]).result,claim_country:"India",country_basis:"detected from captions",
+    source_published_at:"2025-07-20",spoken_at:"2025-07-15",spoken_at_basis:"recording date stated in the video description or title"}});
+  await flush();
+  assert.match(text(app.root),/India \(detected from captions\)/);
+  assert.match(text(app.root),/Video published: 2025-07-20/);
+  assert.match(text(app.root),/Spoken on: 2025-07-15 \(recording date stated/);
+  assert.equal(descendants(app.root).find(element=>element.tag === "input").value,"");
+  assert.deepEqual(app.stored,{});
+  app.open();
+  assert.equal(app.requests[1].claim_country,"");
+  assert.equal(app.requests[1].spoken_at,"");
 });
 
 test("a reading with a direction becomes the row's badge, marked as a reading", async () => {

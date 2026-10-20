@@ -8,6 +8,8 @@
     busy = false,
     version = 0,
     shortsOpen = false,
+    contextReady = null,
+    contextVersion = 0,
     host = null,
     ui = null;
   const currentId = () =>
@@ -73,7 +75,7 @@
     const time = video?.currentTime || 0;
     if (id !== videoId) {
       shortsOpen = false;
-      if (ui) expand(false);
+      if (ui) { expand(false); restoreContext(id); }
     }
     if (id !== videoId || time < lastTime - 0.5 || time > lastTime + 3) reset();
     videoId = id;
@@ -339,13 +341,13 @@
     };
     header.append(node("span", "Fact checker", "brand"), dismiss);
     check.onclick = run;
-    // The claim's country is never inferred from sources or the news edition; the viewer, who knows
-    // what the video is about, may declare it. It travels with each check and is shown on every card.
+    const context = node("details");
+    context.append(node("summary", "Context · automatic, with optional corrections"));
     const country = node("label", undefined, "country");
     const countryInput = node("input");
     countryInput.type = "text";
-    countryInput.placeholder = "not set";
-    countryInput.maxLength = 40;
+    countryInput.placeholder = "Detect automatically";
+    countryInput.maxLength = 60;
     countryInput.setAttribute("list", "fact-checker-countries");
     countryInput.setAttribute("aria-label", "Country the claims in this video are about");
     const suggestions = node("datalist");
@@ -362,16 +364,13 @@
     spokenInput.type = "date";
     spokenInput.setAttribute("aria-label", "Date the claims were spoken, if known");
     spoken.append(node("span", "Spoken on"), spokenInput);
-    // The declaration is the viewer's setting, so it survives reloads: stored locally in the
-    // extension, never sent anywhere but the local checker with each check.
-    countryInput.onchange = () => {
-      try { chrome.storage?.local?.set({ claim_country: claimCountry() }); } catch {}
+    const saveContext = () => {
+      contextVersion++;
+      try { chrome.storage?.local?.set({ [`context:${currentId()}`]: { country: claimCountry(), spoken: spokenAt() } }); } catch {}
     };
-    try {
-      chrome.storage?.local?.get("claim_country", (stored) => {
-        if (typeof stored?.claim_country === "string" && !countryInput.value) countryInput.value = stored.claim_country;
-      });
-    } catch {}
+    countryInput.onchange = spokenInput.onchange = saveContext;
+    countryInput.oninput = spokenInput.oninput = () => { contextVersion++; };
+    context.append(country, spoken, node("p", "Leave blank to detect context from this video. Corrections apply only to this video.", "scope"));
     const status = node("p", "Ready to read recent captions.", "status");
     status.setAttribute("role", "status");
     const cards = node("div");
@@ -380,11 +379,35 @@
       "Uses completed English captions from the preceding 30 seconds, checking up to three recent claims. Contrasts stay together. Captions may contain errors. Experimental news research reads public pages; coverage and YouTube accuracy are unmeasured. Matching passages do not establish a verdict.",
       "scope",
     );
-    body.append(check, country, spoken, status, cards, scope);
+    body.append(check, context, status, cards, scope);
     panel.append(header, body);
     shadow.append(style, launcher, panel);
     ui = { check, status, cards, panel, launcher, scope, country: countryInput, spoken: spokenInput };
+    restoreContext(currentId());
     expand(false);
+  }
+
+  function restoreContext(id) {
+    ui.country.value = ui.spoken.value = "";
+    ui.country.placeholder = "Detect automatically";
+    const revision = ++contextVersion;
+    let pending = true;
+    const ready = new Promise(resolve => {
+      const done = stored => {
+        if (currentId() === id && contextVersion === revision) {
+          const saved = stored?.[`context:${id}`];
+          if (typeof saved?.country === "string") ui.country.value = saved.country;
+          if (typeof saved?.spoken === "string") ui.spoken.value = saved.spoken;
+        }
+        pending = false;
+        resolve();
+      };
+      try {
+        if (chrome.storage?.local) chrome.storage.local.get(`context:${id}`, done);
+        else done();
+      } catch { done(); }
+    });
+    contextReady = pending ? ready : null;
   }
 
   // The sentence-level reading's summary, when it has a direction, is what the viewer should see
@@ -418,7 +441,9 @@
   }
   function showResult(data) {
     if (data.scope) ui.scope.textContent = data.scope;
-    ui.status.textContent = `${data.title}\nCaption excerpt ${clock(data.start)}–${clock(data.end)} · clicked at ${clock(data.clicked_at)}\n${data.source === "visible" ? "Observed on-screen captions; timing is approximate." : "YouTube captions · English"}${data.claim_country ? `\nClaims read as about ${data.claim_country} (supplied by you).` : "\nClaim country not set; nothing can be established without it."}`;
+    const countryBasis = data.country_basis && data.country_basis !== "supplied by the viewer" ? data.country_basis : "supplied by you";
+    ui.country.placeholder = data.claim_country ? `Auto: ${data.claim_country}` : "Country unclear · optional correction";
+    ui.status.textContent = `${data.title}\nCaption excerpt ${clock(data.start)}–${clock(data.end)} · clicked at ${clock(data.clicked_at)}\n${data.source === "visible" ? "Observed on-screen captions; timing is approximate." : "YouTube captions · English"}${data.claim_country ? `\nClaims read as about ${data.claim_country} (${countryBasis}).` : "\nCountry could not be detected confidently; you can correct it under Context."}\nVideo published: ${data.source_published_at || "unknown"}.\nSpoken on: ${data.spoken_at ? `${data.spoken_at} (${data.spoken_at_basis || "supplied by you"})` : "unknown; publication date is not a recording date"}.`;
     const transcript = node("details");
     transcript.append(
       node("summary", "Captured caption excerpt"),
@@ -651,7 +676,7 @@
   // A short place name or nothing; anything else is sent as unset rather than rejected mid-check.
   function claimCountry() {
     const value = (ui?.country?.value || "").trim().replace(/\s+/g, " ");
-    return /^[A-Za-z][A-Za-z .'-]{1,39}$/.test(value) ? value : "";
+    return /^[\p{L}][\p{L} .’'&-]{1,59}$/u.test(value) ? value : "";
   }
 
   function spokenAt() {
@@ -665,6 +690,7 @@
     if (currentId() !== videoId) {
       reset();
       videoId = currentId();
+      restoreContext(videoId);
     }
     busy = true;
     ui.check.disabled = true;
@@ -674,6 +700,8 @@
     const requestedId = currentId(),
       requestVersion = ++version;
     try {
+      if (contextReady) await contextReady;
+      if (requestVersion !== version || currentId() !== requestedId) return;
       const response = await chrome.runtime.sendMessage({
         type: "check-captions",
         video_id: requestedId,
@@ -700,6 +728,7 @@
     if (currentId() !== videoId) {
       reset();
       videoId = currentId();
+      if (ui) restoreContext(videoId);
     }
     shortsOpen = true;
     mount();

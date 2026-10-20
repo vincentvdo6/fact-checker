@@ -486,7 +486,7 @@ def test_viewer_declared_country_reaches_the_metadata_and_the_result_but_is_neve
     finally:
         app.close()
     assert caption_excerpt(payload(claim_country="United Kingdom")).claim_country == "United Kingdom"
-    for bad in ("<script>", "U", "x" * 41, 7, "United States; drop"):
+    for bad in ("<script>", "U", "x" * 61, 7, "United States; drop"):
         with pytest.raises(ValueError, match="claim country"):
             caption_excerpt(payload(claim_country=bad))
 
@@ -516,6 +516,40 @@ def test_viewer_declared_speech_date_bounds_the_search_and_is_never_later_than_t
             caption_excerpt(payload(spoken_at=bad))
     with pytest.raises(ValueError, match="later than the video"):
         caption_excerpt(payload(source_published_at="2025-07-20", spoken_at="2025-07-21"))
+
+
+def test_automatic_context_keeps_its_provenance_through_the_adapter_and_research_plan():
+    from src.pipeline.web_research import research_plan
+
+    class Processor:
+        def __init__(self, metadata):
+            self.metadata = metadata
+
+        def begin_check(self, metadata):
+            self.metadata = metadata
+
+        def process(self, context):
+            return {"status": "verified", "research": research_plan(context, self.metadata)}
+
+        def close(self):
+            pass
+
+    checker = YouTubeChecker(Processor)
+    result = checker.check(payload(claim_country="Curaçao", country_basis="detected from captions",
+                                   spoken_at="2025-07-15", spoken_at_basis="YouTube broadcast metadata (UTC)"))
+    plan = result["rows"][0]["result"]["research"]
+    assert result["country_basis"] == plan["claim_scope"]["country_basis"] == "detected from captions"
+    assert result["spoken_at_basis"] == plan["claim_scope"]["spoken_at_basis"] == "YouTube broadcast metadata (UTC)"
+    assert "Curaçao" in plan["assertions"][0]["query"]
+    assert plan["search_cutoff"] == "2025-07-15" and plan["cutoff_basis"] == "Speech date: YouTube broadcast metadata (UTC)"
+    fresh = checker.check(payload())
+    assert fresh["claim_country"] == fresh["country_basis"] == fresh["spoken_at"] == fresh["spoken_at_basis"] == ""
+    orphan = checker.check(payload(country_basis="detected from captions", spoken_at_basis="YouTube broadcast metadata (UTC)"))
+    assert orphan["country_basis"] == orphan["spoken_at_basis"] == "", "a basis without its value is dropped"
+    checker.close()
+    for field in ("country_basis", "spoken_at_basis"):
+        with pytest.raises(ValueError, match="context basis"):
+            caption_excerpt(payload(**{field: "inferred from browser locale"}))
 
 
 def test_clicks_are_recorded_only_when_a_directory_is_given_and_a_failed_write_never_fails_the_check(tmp_path, capsys):

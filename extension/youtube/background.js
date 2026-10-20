@@ -1,4 +1,5 @@
 import { readCaptions } from "./captions.js";
+import { videoContext } from "./context.js";
 
 let port = null,
   pending = null;
@@ -71,8 +72,16 @@ function checkCaptions(message, tabId) {
         throw new Error(
           "No recent completed subtitles were accessible. Try again after the spoken sentence finishes; CC can stay off.",
         );
-      if (typeof message.claim_country === "string" && message.claim_country) result.claim_country = message.claim_country;
-      if (typeof message.spoken_at === "string" && message.spoken_at) result.spoken_at = message.spoken_at;
+      Object.assign(result, videoContext(result));
+      if (typeof message.claim_country === "string" && message.claim_country) {
+        result.claim_country = message.claim_country;
+        result.country_basis = "supplied by the viewer";
+      }
+      if (typeof message.spoken_at === "string" && message.spoken_at) {
+        result.spoken_at = message.spoken_at;
+        result.spoken_at_basis = "supplied by the viewer";
+      }
+      delete result.video_metadata;
       localCheck(result, request);
     })().catch((error) => finish(request, error));
   });
