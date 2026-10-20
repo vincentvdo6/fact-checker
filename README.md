@@ -9,6 +9,36 @@ The browser extension lets a viewer request a check and inspect supporting sourc
 quotations and links. It remains a development prototype; the offline results
 below measure individual components, not reliability on political videos.
 
+## Findings
+
+The research question is whether a claim verifier's confidence knows when it was
+not given the evidence it needed. The short paper ([PDF](paper/main.pdf),
+[source](paper/main.tex), [where each number comes from](paper/PROVENANCE.md))
+reports:
+
+- **Calibration works.** Vector scaling fitted on a separate calibration split cuts
+  expected calibration error from 0.129 to 0.031 on 2,000 held-out FEVER claims. A
+  confidence band promised at 90% accuracy delivers 92.1% on 31% of them.
+- **Confidence barely tracks groundedness.** When the gold evidence never reached
+  the model, its mean confidence is only 0.037 lower; it still answers most of those
+  claims correctly, consistent with FEVER's claim-only artifacts.
+- **A retrieval-side sufficiency score does,** with AUC 0.75 against 0.59 for the
+  verdict logits, but it barely predicts correctness (0.53). Used as a separate gate,
+  it declines 44% of ungrounded claims against 18% of grounded ones, at a cost of 18
+  points of coverage.
+- **Relabelling ungrounded training rows as "not enough evidence" backfires**
+  (NEI F1 falls by 0.072); dropping them instead costs nothing overall.
+- **On live news,** the sentence-level judge is wrong on 10 of the 18 sentences it
+  counts, yet composition rules that abstain by default point the right way on 42 of
+  45 directional readings in a pre-registered batch of 142 claims (32% coverage).
+- **Real captions are different.** In seven checks of political speeches, five of the
+  six directional readings rested on a reprint of the speech itself (a transcript, or
+  an article quoting it), and two of the three that could be scored were wrong.
+
+The news-side claims and labels come from a single automated annotator, not people;
+the real-caption truth values were supplied by the author. The paper states each
+measurement's provenance and limits.
+
 ## Evaluation
 
 These saved experiments evaluate three DeBERTa-v3-base verdict variants, confidence
@@ -90,6 +120,8 @@ an older Wikipedia corpus, which limits their usefulness for recent claims.
 
 Current priorities are to:
 
+- Recognise sources that reprint the speaker's own words, such as speech transcripts
+  and articles quoting the claim, and stop counting them as evidence for it.
 - Retrieve sources that address the actual claim and its context.
 - Distinguish relevant evidence from material that merely shares its wording.
 - Handle missing context, conflicting sources, and uncertainty more clearly.
@@ -105,6 +137,7 @@ Current priorities are to:
 | [scripts](scripts/) | Setup, data preparation, and evaluation tools |
 | [results](results/) | Three small aggregate metric records with source-file hashes |
 | [docs/benchmark_results.md](docs/benchmark_results.md) | Saved offline results, metric definitions, and artifact provenance |
+| [paper](paper/) | Short paper (LaTeX source and PDF) and the provenance of its numbers |
 | [tests](tests/) | Pipeline and extension tests |
 
 For a reproducible problem, include the video URL and timestamp, the exact claim,
