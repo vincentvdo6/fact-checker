@@ -299,3 +299,14 @@ def test_one_page_read_both_ways_is_a_misreading_and_counts_for_nothing():
                                                   judgment("assertion-1", "s1:p1:u1", "states")], SOURCES)
     assert dispute["assertions"][0]["status"] == "contested", "two pages disagreeing is a dispute"
     assert any("misreading, not a dispute" in rule for rule in verdict["rules"])
+
+
+def test_the_confirming_models_reading_travels_with_its_row_and_changes_nothing_else():
+    plain = compose(ASSERTIONS[:1], GATE, FOR[:1], SOURCES)
+    reading = {"entailment": 0.97, "neutral": 0.02, "contradiction": 0.01}
+    confirmed = compose(ASSERTIONS[:1], GATE, [{**FOR[0], "nli": reading}], SOURCES)
+    row = confirmed["assertions"][0]["evidence"][0]
+    assert row["nli"] == reading and row["nli"] is not reading, "the row carries a copy of the confirming reading"
+    del row["nli"]
+    assert confirmed == plain, "the reading is display only"
+    assert "nli" not in plain["assertions"][0]["evidence"][0]

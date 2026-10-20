@@ -71,6 +71,8 @@ def _evidence_row(judgment: dict, unit: dict, source: dict, independent: str, as
         row["confidence"] = float(judgment["confidence"])       # display order only; never a rule input
     if "context_review" in judgment:
         row["context_review"] = dict(judgment["context_review"])
+    if "nli" in judgment:
+        row["nli"] = dict(judgment["nli"])       # the confirming model's reading; display only, never a rule input
     if row["origin"] == "context" and row["relation"] in ("states", "states_negation"):
         # Concept research explains the claim's terms; its pages were never searched for the assertion.
         row["relation"], row["not_counted"] = "bears_on", f"{judgment['relation']}: {CONTEXT_NOTE}"

@@ -1,7 +1,9 @@
 # Try the YouTube extension locally
 
-The extension adds a **Fact checker** tab where YouTube shows its transcript panel.
-The checker starts closed. Open the tab when needed and close it with × or Escape.
+The extension shows each check as a small notification ("blip") beside the video, never over
+it outside fullscreen. Start a check with the **Check** button in the page's bottom-right corner,
+the extension icon, or **Alt+Shift+F** (change it at `chrome://extensions/shortcuts`). The **⋯**
+button opens the full details and the context corrections; close them with × or Escape.
 Chrome or Edge starts
 the Python model host when needed; no local website or audio listener is required.
 
@@ -28,8 +30,8 @@ passing does not establish model integrity, browser connectivity or accuracy.
    choose **Load unpacked**, and select this `extension/youtube` directory.
 3. Pin **Fact checker for YouTube** in the browser's extensions menu.
 4. Open or refresh a YouTube video. Play the claim and let the sentence finish,
-   then open **Fact checker** and click **Check what I just heard**.
-   The extension icon opens the checker and starts a check directly.
+   then press **Check**, the extension icon or **Alt+Shift+F**. A blip counts the seconds
+   while the check runs and is replaced by one blip per checked claim, newest first.
 
 Visible **CC can stay off** and the transcript panel can stay closed. The checker
 requests available English subtitle data in the background when you check a claim.
@@ -272,11 +274,23 @@ pairs a claim and a few minutes a claim to label.
 
 ## Current scope
 
-- Regular YouTube watch pages use the transcript area beside the video, moving
-  below it with YouTube's layout in narrow windows and theater mode. The extension
-  only inserts its own controls and panel. Styles stay inside its shadow root;
-  opening the checker does not hide YouTube panels or scroll the page.
-  Shorts retain an icon-opened floating panel; reads only YouTube pages.
+- Blips are placed from the player's box on screen and never move or restyle YouTube:
+  - **Normal mode:** a stack beside the player, over the recommendations column (below the
+    player when YouTube stacks a narrow window). Results stay compact; tap one for its
+    quoted source.
+  - **Theater mode:** inside the black bar beside the video, where the newest reading opens
+    as a narrow card by itself. With no bar (an unusually tall or narrow window) the stack
+    goes below the player.
+  - **Fullscreen:** see-through chips in the top-right corner of the video, the only mode
+    that draws over it; the newest reading opens there and folds back to a chip after 15 s.
+    The page's Check button is hidden; use the shortcut.
+  - A supported or contradicted reading stays until dismissed; a contradiction resting on one
+    source says "One source only. Read it before you repeat this." Not established and
+    qualified readings show for 6 s, then become a count that opens the details.
+  - The details panel (the full card, research and context corrections) opens only from
+    **⋯**, a blip's **Details** or the count, where YouTube shows its transcript panel; on
+    Shorts it floats. Styles stay inside shadow roots; nothing hides YouTube panels or
+    scrolls the page. Reads only YouTube pages.
 - Checks up to three check-worthy claims from completed captions in the preceding
   30 seconds, counting back from the playback position; sentences the detector skips
   are shown as skipped and do not use a slot. Short corrective contrasts such as
@@ -300,7 +314,8 @@ pairs a claim and a few minutes a claim to label.
 - Only recent visible caption text is buffered in memory. No microphone or system
   audio is captured, and no transcript is saved by the extension or native host.
 - One local inference request runs at a time. Seeking or changing videos clears
-  the panel and prevents stale results from appearing under the new position.
+  the blips and the panel and prevents stale results from appearing under the new position.
+  **Stop** stops waiting for a check; the local host may still finish it, and the reply is ignored.
 
 The unpacked extension's stable ID is `abjbodonhgkdgkhalhdpjfhmlfcpdegf`.
 The manifest key is public identification material, not a secret.

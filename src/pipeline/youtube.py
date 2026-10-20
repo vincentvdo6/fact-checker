@@ -250,16 +250,18 @@ class YouTubeChecker:
         rows.extend({"text": sentence.text, "result": {"status": "skipped",
                                                        "filter_reason": "unfinished: still being spoken when checked"}}
                     for sentence in unfinished)
-        web_scope = ("experimental news research enabled; source applicability unverified"
-                     if getattr(self.processor, "web", None) is not None
-                     else "web research is off")
+        # News checks never read the 2017 Wikipedia corpus as evidence, so only offline checks name it.
+        scope = ("English captions; experimental news research through Google News, pages read on this computer; "
+                 "readings composed by fixed rules from quoted sentences; source applicability unverified."
+                 if getattr(self.processor, "web", None) is not None
+                 else "English captions; local Wikipedia June 2017; web research is off; YouTube accuracy unmeasured.")
         return {"video_id": excerpt.video_id, "title": excerpt.title, "clicked_at": excerpt.clicked_at,
                 "start": excerpt.start, "end": excerpt.end, "excerpt": excerpt.text, "source": excerpt.source,
                 "language": excerpt.language, "rows": rows, "omitted_claims": len(sentences) - len(rows),
                 "source_published_at": excerpt.source_published_at, "claim_country": excerpt.claim_country,
                 "spoken_at": excerpt.spoken_at,
                 "country_basis": excerpt.country_basis, "spoken_at_basis": excerpt.spoken_at_basis,
-                "scope": f"English captions; local Wikipedia June 2017; {web_scope}; YouTube accuracy unmeasured."}
+                "scope": scope}
 
     def close(self) -> None:
         if self.processor is not None:

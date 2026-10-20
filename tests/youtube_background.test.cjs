@@ -18,10 +18,12 @@ function event() {
 }
 
 function fixture({ postError = null } = {}) {
-  const captures = [], ports = [], timers = new Map(), scheduled = [];
+  const captures = [], ports = [], timers = new Map(), scheduled = [], sent = [];
   let sequence = 0, timerId = 0;
   const chrome = {
-    action: { onClicked: event() },
+    action: { onClicked: event(), setBadgeText: async () => {}, setTitle: async () => {} },
+    commands: { onCommand: event() },
+    tabs: { sendMessage: async (tabId, message) => { sent.push([tabId, message]); } },
     runtime: {
       onMessage: event(),
       connectNative: (name) => {
@@ -58,7 +60,8 @@ function fixture({ postError = null } = {}) {
     clearTimeout: (id) => timers.delete(id),
   });
   return {
-    captures, ports, timers, scheduled,
+    captures, ports, timers, scheduled, sent,
+    command: (name, tab) => chrome.commands.onCommand.emit(name, tab),
     send(tabId = 1, type = "check-captions", fields = {}) {
       const replies = [];
       let resolve;
@@ -254,4 +257,12 @@ test("an idle-port disconnect does not fail caption capture and non-check messag
   assert.equal(app.ports.length, 2);
   app.ports[1].onMessage.emit({ id: app.ports[1].posts[0].id, result: {} });
   await second.response;
+});
+
+test("the keyboard shortcut checks the current video the way the toolbar icon does", async () => {
+  const app = fixture();
+  app.command("check-captions", { id: 7, url: "https://www.youtube.com/watch?v=abcdefghijk" });
+  app.command("another-command", { id: 8, url: "https://www.youtube.com/watch?v=abcdefghijk" });
+  await flush();
+  assert.equal(JSON.stringify(app.sent), JSON.stringify([[7, { type: "open-checker" }]]));
 });

@@ -87,7 +87,7 @@ function checkCaptions(message, tabId) {
   });
 }
 
-chrome.action.onClicked.addListener(async (tab) => {
+async function openChecker(tab) {
   if (!/^https:\/\/www\.youtube\.com\/(watch\?|shorts\/)/.test(tab.url || "")) {
     await chrome.action.setBadgeText({ tabId: tab.id, text: "YT" });
     await chrome.action.setTitle({
@@ -106,6 +106,12 @@ chrome.action.onClicked.addListener(async (tab) => {
     });
     await chrome.tabs.sendMessage(tab.id, { type: "open-checker" });
   }
+}
+
+chrome.action.onClicked.addListener(openChecker);
+// The shortcut is the only trigger in fullscreen, where the page's own Check button is hidden.
+chrome.commands?.onCommand.addListener((command, tab) => {
+  if (command === "check-captions" && tab) openChecker(tab);
 });
 
 chrome.runtime.onMessage.addListener((message, sender, reply) => {

@@ -11,7 +11,13 @@
     contextReady = null,
     contextVersion = 0,
     host = null,
-    ui = null;
+    ui = null,
+    blipHost = null,
+    blipUi = null,
+    entries = [],
+    folded = 0,
+    failure = "",
+    started = 0;
   const currentId = () =>
     new URL(location.href).searchParams.get("v") ||
     location.pathname.match(/^\/shorts\/([\w-]{11})/)?.[1] ||
@@ -39,16 +45,20 @@
     activeCue = null;
     version++;
     busy = false;
+    entries = [];
+    folded = 0;
+    failure = "";
     if (ui) {
       ui.cards.replaceChildren();
       ui.status.textContent =
         "Video position changed. Check the claim you just heard.";
       ui.check.disabled = false;
     }
+    renderBlips();
   }
   function expand(open) {
     ui.panel.hidden = !open;
-    ui.launcher.setAttribute("aria-expanded", String(open));
+    blipUi?.more.setAttribute("aria-expanded", String(open));
   }
   function mount() {
     const panels =
@@ -81,6 +91,7 @@
     videoId = id;
     lastTime = time;
     mount();
+    place();
     const player = document.getElementById("movie_player");
     if (!video || player?.classList.contains("ad-showing")) {
       visible = [];
@@ -111,7 +122,7 @@
         all:initial;
         display:block;
         width:100%;
-        margin:0 0 16px;
+        margin:0;
         color-scheme:light dark;
         --surface:var(--yt-spec-base-background,#fff);
         --text:var(--yt-spec-text-primary,#0f0f0f);
@@ -150,7 +161,7 @@
         background:var(--surface);
         color:var(--text);
         font:13px/1.5 'Segoe UI',Arial,sans-serif;
-        margin-top:10px
+        margin:0 0 16px
       }
       
       header {
@@ -184,18 +195,6 @@
         color:var(--muted);
         font-size:20px;
         line-height:1
-      }
-      .launcher {
-        font:600 14px/1.5 'Segoe UI',Arial,sans-serif;
-        color:var(--text);
-        background:var(--soft)
-      }
-      .launcher[aria-expanded="true"] {
-        border-color:var(--accent);
-        color:var(--accent)
-      }
-      :host([data-layout="shorts"]) .launcher {
-        display:none
       }
       .body {
         overflow-y:auto;
@@ -330,12 +329,11 @@
         outline-offset:2px
       }
     `;
+    // The details: everything a check found, and the context corrections. It opens only when asked,
+    // from a blip or the floating Details button; results arrive as blips beside the video.
     const panel = node("section", undefined, "panel"),
-      header = node("header"),
-      launcher = node("button", "Fact checker", "launcher");
+      header = node("header");
     panel.id = "fact-checker-panel";
-    launcher.setAttribute("aria-controls", panel.id);
-    launcher.onclick = () => expand(ui.panel.hidden);
     panel.setAttribute("aria-label", "YouTube fact checker");
     const body = node("div", undefined, "body"),
       check = node("button", "Check what I just heard", "check");
@@ -345,7 +343,7 @@
       expand(false);
       shortsOpen = false;
       mount();
-      if (host.isConnected) launcher.focus();
+      blipUi?.more.focus();
     };
     panel.onkeydown = (event) => {
       if (event.key === "Escape") {
@@ -395,8 +393,8 @@
     );
     body.append(check, context, status, cards, scope);
     panel.append(header, body);
-    shadow.append(style, launcher, panel);
-    ui = { check, status, cards, panel, launcher, scope, country: countryInput, spoken: spokenInput };
+    shadow.append(style, panel);
+    ui = { check, status, cards, panel, scope, country: countryInput, spoken: spokenInput };
     restoreContext(currentId());
     expand(false);
   }
@@ -422,6 +420,351 @@
       } catch { done(); }
     });
     contextReady = pending ? ready : null;
+  }
+
+  // Results arrive as blips beside the video rather than in a sidebar. Nothing covers the picture
+  // unless the viewer asks: in normal mode the stack sits beside the player, in theater mode in the
+  // black bar beside the video, and only in fullscreen, where nothing else is on screen, over its
+  // corner as see-through chips. A directional reading opens by itself in theater and fullscreen
+  // (in fullscreen it folds back after 15 s); "not established" shows for 6 s, then becomes a count.
+  const OPEN_FOR_MS = 15000,
+    QUIET_FOR_MS = 6000;
+  const BLIP_CSS = `
+    :host{all:initial;position:fixed;top:0;left:0;width:0;height:0;z-index:2147483647;
+      --font:Roboto,'Segoe UI',Arial,sans-serif;font:13px/1.4 var(--font);color:#f1f1f1}
+    *{box-sizing:border-box}
+    [hidden]{display:none!important}
+    p{margin:0}
+    .stack{position:fixed;display:flex;flex-direction:column;gap:8px;pointer-events:none;overflow-x:hidden;overflow-y:auto}
+    .stack>*{pointer-events:auto}
+    .blip,.card{position:relative;background:#212121;border:1px solid #3a3a3a;border-radius:12px;
+      box-shadow:0 8px 24px rgba(0,0,0,.45)}
+    .blip{display:flex;align-items:flex-start;gap:10px;padding:10px 4px 10px 12px}
+    .card{display:flex;flex-direction:column;gap:10px;padding:12px 14px 14px}
+    .against{border-color:#5a4330}
+    .quiet{background:#1a1a1a;border-color:#303030;align-items:center;padding:8px 12px}
+    .mark{flex:0 0 24px;height:24px;border-radius:12px;display:flex;align-items:center;justify-content:center;
+      font:700 13px/1 var(--font);color:#0f0f0f}
+    .for .mark{background:#3ea6ff}.against .mark{background:#ffab5c}.mixed .mark{background:#e3cf73}
+    .quiet .mark{flex-basis:18px;height:18px;border:2px solid #aaa;color:#aaa;font-size:10px}
+    .body{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;text-align:left;background:none;border:0;
+      padding:0;color:inherit;font:inherit;cursor:pointer}
+    .label{font:500 12px/1.4 var(--font)}
+    .for .label{color:#3ea6ff}.against .label{color:#ffab5c}.mixed .label{color:#e3cf73}.quiet .label{color:#ccc}
+    .said{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+    .quiet .said{-webkit-line-clamp:1;color:#aaa;font-size:12px}
+    .note{font-size:12px;color:#aaa;overflow-wrap:anywhere}
+    .caution{font-size:12px;color:#ffcf9f}
+    .close,.collapse{flex:0 0 32px;height:32px;border:0;background:none;color:#aaa;border-radius:16px;
+      font:18px/1 var(--font);cursor:pointer}
+    .checking{align-items:center}
+    .checking .wait{flex:1}
+    .spin{flex:0 0 18px;width:18px;height:18px;border-radius:50%;border:3px solid #3a3a3a;border-top-color:#f1f1f1;
+      animation:spin 1s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    @media (prefers-reduced-motion:reduce){.spin{animation:none}}
+    .text-button{border:0;background:none;color:#aaa;font:500 12px/1 var(--font);height:32px;padding:0 8px;
+      border-radius:16px;cursor:pointer}
+    .retry{color:#3ea6ff}
+    .count{align-self:flex-end;display:flex;align-items:center;gap:6px;background:#212121;border:1px solid #3a3a3a;
+      border-radius:14px;padding:4px 10px;color:#aaa;font:12px/1.4 var(--font);cursor:pointer}
+    .count::before{content:"";width:8px;height:8px;border-radius:4px;border:1.5px solid #aaa;box-sizing:border-box}
+    .head{display:flex;align-items:center;gap:10px}
+    .head .label{flex:1;min-width:0;font-size:14px;overflow-wrap:anywhere}
+    .kicker{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#aaa}
+    .said-full{font-size:15px;line-height:1.45;overflow-wrap:anywhere}
+    .source{background:#2c2c2c;border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:6px}
+    .quote{font-size:14px;line-height:1.5;overflow-wrap:anywhere}
+    .actions{display:flex;flex-wrap:wrap;gap:8px}
+    a{color:#3ea6ff}
+    .primary{display:inline-flex;align-items:center;height:36px;padding:0 14px;border-radius:18px;background:#f1f1f1;
+      color:#0f0f0f;font:500 13px/1 var(--font);text-decoration:none}
+    .secondary{height:36px;padding:0 14px;border-radius:18px;border:0;background:#303030;color:#f1f1f1;
+      font:500 13px/1 var(--font);cursor:pointer}
+    .controls{position:fixed;right:24px;bottom:24px;display:flex;gap:6px}
+    .trigger,.more{height:44px;border:1px solid #3a3a3a;background:#212121;color:#f1f1f1;border-radius:22px;
+      padding:0 16px;font:500 13px/1 var(--font);box-shadow:0 6px 18px rgba(0,0,0,.45);cursor:pointer}
+    .more{width:44px;padding:0;font-size:18px}
+    .trigger:disabled{opacity:.6;cursor:default}
+    button:focus-visible,a:focus-visible{outline:2px solid #3ea6ff;outline-offset:2px}
+    :host([data-narrow="true"]) .blip{flex-wrap:wrap;gap:6px;padding:8px 4px 8px 9px}
+    :host([data-narrow="true"]) .blip .body{order:3;flex-basis:100%;padding-right:5px}
+    :host([data-narrow="true"]) .blip .close{margin-left:auto}
+    :host([data-narrow="true"]) .card{padding:10px;gap:8px}
+    :host([data-narrow="true"]) .collapse,:host([data-narrow="true"]) .record,
+    :host([data-narrow="true"]) .basis.single{display:none}
+    :host([data-narrow="true"]) .mark{flex-basis:20px;height:20px;font-size:11px}
+    :host([data-narrow="true"]) .close{flex-basis:28px;height:28px}
+    :host([data-narrow="true"]) .said-full{display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+    :host([data-narrow="true"]) .actions>*{height:32px;justify-content:center}
+    :host([data-narrow="true"]) .head{gap:6px}
+    :host([data-narrow="true"]) .head .mark{display:none}
+    :host([data-narrow="true"]) .head .label{font-size:11px;overflow-wrap:break-word}
+    :host([data-narrow="true"]) .said-full,:host([data-narrow="true"]) .quote{font-size:12px}
+    :host([data-narrow="true"]) .source{padding:0;background:none}
+    :host([data-narrow="true"]) .actions{flex-direction:column}
+    :host([data-mode="fullscreen"]) .controls,:host([data-mode="fullscreen"]) .secondary{display:none}
+    :host([data-mode="fullscreen"]) .blip{align-self:flex-end;align-items:center;border:0;border-radius:18px;
+      background:rgba(28,28,28,.82);box-shadow:none;padding:6px 4px 6px 6px}
+    :host([data-mode="fullscreen"]) .blip .said{display:none}
+    :host([data-mode="fullscreen"]) .card{border:0;background:rgba(28,28,28,.94)}
+    :host([data-mode="fullscreen"]) .count{border:0;background:rgba(28,28,28,.82)}
+  `;
+
+  function viewMode() {
+    if (document.fullscreenElement) return "fullscreen";
+    if (document.querySelector("ytd-watch-flexy")?.hasAttribute?.("theater")) return "theater";
+    return "normal";
+  }
+
+  function buildBlips() {
+    blipHost = document.createElement("div");
+    blipHost.id = "youtube-fact-checker-blips";
+    const shadow = blipHost.attachShadow({ mode: "closed" });
+    const style = node("style");
+    style.textContent = BLIP_CSS;
+    const stack = node("div", undefined, "stack");
+    stack.setAttribute("aria-live", "polite");
+    stack.setAttribute("aria-label", "Fact checks");
+    const controls = node("div", undefined, "controls");
+    const trigger = node("button", "Check · Alt+Shift+F", "trigger");
+    trigger.setAttribute("aria-label", "Check what I just heard (Alt+Shift+F)");
+    trigger.onclick = run;
+    const more = node("button", "⋯", "more");
+    more.setAttribute("aria-label", "Fact checker details and context");
+    more.setAttribute("aria-expanded", "false");
+    more.onclick = () => (ui && !ui.panel.hidden ? closeDetails() : openDetails());
+    controls.append(trigger, more);
+    shadow.append(style, stack, controls);
+    blipUi = { stack, trigger, more, wait: null };
+  }
+
+  // The stack is placed from the player's box on screen, never by moving or restyling YouTube.
+  function place() {
+    const watching = (location.pathname === "/watch" || location.pathname.startsWith("/shorts/")) && currentId();
+    if (!watching) {
+      blipHost?.remove();
+      return;
+    }
+    if (!blipHost) buildBlips();
+    const parent = document.fullscreenElement || document.documentElement;
+    if (blipHost.parentElement !== parent) parent.append(blipHost);
+    // The visible width, without a scrollbar; a box that runs past it is clipped to it.
+    const mode = viewMode(),
+      width = document.documentElement.clientWidth || globalThis.innerWidth || 1280;
+    const player = document.getElementById("movie_player")?.getBoundingClientRect?.();
+    const picture = document.querySelector("video.html5-main-video")?.getBoundingClientRect?.();
+    let box = mode === "fullscreen" ? { top: 20, right: 20, width: 344 } : { top: 72, right: 24, width: 344 };
+    if (mode !== "fullscreen" && player?.width && picture?.width) {
+      const edge = Math.min(player.right, width),
+        bar = edge - picture.right;
+      if (mode === "theater" && bar >= 140)
+        box = { top: player.top + 12, right: width - edge + 8, width: Math.min(344, bar - 16),
+                maxHeight: player.height - 72 };
+      else if (mode === "theater" || width - player.right < 368)
+        box = { top: player.bottom + 12, right: 24, width: 344 };
+    }
+    blipHost.setAttribute("data-mode", mode);
+    blipHost.setAttribute("data-narrow", String(box.width < 240));
+    Object.assign(blipUi.stack.style, {
+      top: `${Math.max(8, Math.round(box.top))}px`, right: `${Math.round(box.right)}px`,
+      width: `${Math.round(box.width)}px`, maxHeight: box.maxHeight ? `${Math.round(box.maxHeight)}px` : "",
+    });
+  }
+
+  // Which way a reading points, for the blip's colour and whether it speaks up. A qualified reading
+  // ("supported, not established") is a lead, so it stays as quiet as no reading at all.
+  function blipKind(result) {
+    if (result.outcome === "answered") return { supported: "for", contradicted: "against" }[result.verdict] || "quiet";
+    const verdict = result.decomposed?.verdict;
+    if (verdict?.summary === "established") return verdict.relationship === "contradicted" ? "against" : "for";
+    return { partially_established: "for", partially_contradicted: "against", contested: "mixed" }[verdict?.summary] || "quiet";
+  }
+
+  function entryFor(row) {
+    const result = row.result,
+      verdict = result.decomposed?.verdict,
+      assertions = verdict?.assertions || [],
+      kind = blipKind(result);
+    // The quotation a direction rests on: the first counted sentence of an assertion that has one.
+    const assertion = kind === "quiet" ? null
+      : assertions.find((item) => /^(supported|contradicted)$/.test(item.status) && item.evidence?.length) ||
+        assertions.find((item) => item.evidence?.length) || null;
+    return {
+      text: row.text, kind, label: outcome(result)[0], assertion, quote: assertion?.evidence?.[0] || null,
+      basis: assertion?.basis || "", parts: assertions.length, judgeNote: verdict?.judge_note || "",
+      // Every wrong reading on the held-out batches was one source contradicting a true claim.
+      caution: kind === "against" && /^one source/.test(assertion?.basis || "")
+        ? "One source only. Read it before you repeat this." : "",
+      open: false, folded: false, dismissed: false,
+    };
+  }
+
+  const MARK = { for: "✓", against: "✕", mixed: "!", quiet: "–" };
+  function closeButton(entry) {
+    const close = node("button", "×", "close");
+    close.setAttribute("aria-label", "Dismiss");
+    close.onclick = () => {
+      entry.dismissed = true;
+      renderBlips();
+    };
+    return close;
+  }
+
+  function blipFor(entry) {
+    const item = node("div", undefined, `blip ${entry.kind}`);
+    item.setAttribute("role", "status");
+    const mark = node("span", MARK[entry.kind], "mark");
+    mark.setAttribute("aria-hidden", "true");
+    const body = node("button", undefined, "body");
+    body.append(node("span", entry.quote ? `${entry.label} · ${publisher(entry.quote.url)}` : entry.label, "label"));
+    if (entry.text) body.append(node("span", `“${entry.text}”`, "said"));
+    if (entry.caution) body.append(node("span", entry.caution, "note"));
+    body.onclick = () => {
+      if (entry.kind === "quiet") return openDetails();
+      for (const other of entries) other.open = false;
+      entry.open = true;
+      renderBlips();
+    };
+    item.append(mark, body);
+    if (entry.kind !== "quiet") item.append(closeButton(entry));
+    return item;
+  }
+
+  function cardFor(entry) {
+    const card = node("div", undefined, `card ${entry.kind}`);
+    card.setAttribute("role", "dialog");
+    card.setAttribute("aria-label", `Fact check: ${entry.label}`);
+    const head = node("div", undefined, "head"),
+      mark = node("span", MARK[entry.kind], "mark"),
+      collapse = node("button", "⌃", "collapse");
+    mark.setAttribute("aria-hidden", "true");
+    collapse.setAttribute("aria-label", "Collapse");
+    collapse.onclick = () => {
+      entry.open = false;
+      renderBlips();
+    };
+    head.append(mark, node("span", entry.label, "label"), collapse, closeButton(entry));
+    card.append(head);
+    // A single source's basis repeats the source line below, so the narrow bar can leave it out.
+    if (entry.basis) card.append(node("p", entry.basis, /^one source/.test(entry.basis) ? "note basis single" : "note basis"));
+    card.append(node("p", "Just heard", "kicker"), node("p", entry.text, "said-full"));
+    // A contrast is read part by part; the quotation answers this part, not the whole sentence.
+    if (entry.parts > 1 && entry.assertion) card.append(node("p", `About “${entry.assertion.text}”`, "note"));
+    // The judge's record says the sentences are "quoted below", so it precedes the quotation.
+    if (entry.judgeNote) card.append(node("p", entry.judgeNote, "note record"));
+    const quote = entry.quote;
+    if (quote) {
+      const source = node("div", undefined, "source"),
+        line = node("p", undefined, "note");
+      const read = [READ_AS[quote.relation], quote.relation === "states" && quote.nli ? "confirmed by a second model" : ""]
+        .filter(Boolean).join("; ");
+      line.append(sourceLink(quote.url, publisher(quote.url)) || node("span", publisher(quote.url)),
+                  node("span", ` · ${quote.published_at ? `published ${quote.published_at}` : "publication date unconfirmed"}${read ? ` · ${read}` : ""}`));
+      source.append(node("p", "The source says", "kicker"), node("p", `“${displayText(quote.text)}”`, "quote"), line);
+      card.append(source);
+    }
+    if (entry.caution) card.append(node("p", entry.caution, "caution"));
+    card.append(node("p", "A draft reading by fixed rules, not a verified verdict.", "note"));
+    const actions = node("div", undefined, "actions"),
+      link = quote && sourceLink(quote.url, "Read the source"),
+      details = node("button", "Details", "secondary");
+    if (link) {
+      link.className = "primary";
+      actions.append(link);
+    }
+    details.onclick = openDetails;
+    actions.append(details);
+    card.append(actions);
+    return card;
+  }
+
+  function renderBlips() {
+    if (!blipUi) return;
+    const items = [];
+    blipUi.wait = null;
+    if (busy) {
+      const item = node("div", undefined, "blip checking"),
+        spin = node("span", undefined, "spin"),
+        stop = node("button", "Stop", "text-button");
+      item.setAttribute("role", "status");
+      spin.setAttribute("aria-hidden", "true");
+      blipUi.wait = node("span", `Checking what you just heard · ${Math.round((Date.now() - started) / 1000)} s`, "wait");
+      // Stops waiting; the local check may still finish, and its reply is ignored.
+      stop.onclick = stopWaiting;
+      item.append(spin, blipUi.wait, stop);
+      items.push(item);
+    }
+    if (failure) {
+      const item = node("div", undefined, "blip quiet failure"),
+        retry = node("button", "Retry", "text-button retry");
+      item.setAttribute("role", "alert");
+      retry.onclick = run;
+      item.append(node("span", failure, "note"), retry);
+      items.push(item);
+    }
+    for (const entry of entries)
+      if (!entry.dismissed && !entry.folded) items.push(entry.open ? cardFor(entry) : blipFor(entry));
+    if (folded) {
+      const count = node("button", `${folded} not established`, "count");
+      count.setAttribute("aria-label", `${folded} not established. Show details`);
+      count.onclick = openDetails;
+      items.push(count);
+    }
+    blipUi.stack.replaceChildren(...items);
+    blipUi.trigger.disabled = busy;
+  }
+
+  function showBlips(checked) {
+    entries = checked.map(entryFor);
+    folded = 0;
+    failure = "";
+    if (!entries.length)
+      entries = [{ text: "", kind: "quiet", label: "No checkable claim in the last 30 seconds of captions.", nothing: true,
+                   open: false, folded: false, dismissed: false }];
+    const lead = entries.find((entry) => entry.kind !== "quiet"),
+      mode = viewMode();
+    if (lead && mode !== "normal") {
+      lead.open = true;
+      if (mode === "fullscreen")
+        setTimeout(() => {
+          if (!entries.includes(lead)) return;
+          lead.open = false;
+          renderBlips();
+        }, OPEN_FOR_MS);
+    }
+    for (const entry of entries)
+      if (entry.kind === "quiet")
+        setTimeout(() => {
+          if (!entries.includes(entry) || entry.folded) return;
+          entry.folded = true;
+          if (!entry.nothing) folded++;
+          renderBlips();
+        }, QUIET_FOR_MS);
+    renderBlips();
+  }
+
+  function openDetails() {
+    if (!host) build();
+    shortsOpen = true;
+    mount();
+    expand(true);
+  }
+
+  function closeDetails() {
+    expand(false);
+    shortsOpen = false;
+    mount();
+  }
+
+  function stopWaiting() {
+    version++;
+    busy = false;
+    if (ui) {
+      ui.check.disabled = false;
+      ui.status.textContent = "Stopped waiting for that check.";
+    }
+    renderBlips();
   }
 
   // The sentence-level reading's summary is what the viewer should see first. It is a draft
@@ -469,6 +812,9 @@
     // passed over are listed once at the end rather than as cards of their own.
     const checked = data.rows.filter((row) => row.result.status !== "skipped").reverse();
     const skipped = data.rows.filter((row) => row.result.status === "skipped");
+    // Said once for every card below; each card's dashed badge marks it as a draft too.
+    if (checked.some((row) => row.result.decomposed))
+      ui.cards.append(node("p", "Draft readings of quoted sources by fixed rules; not verified verdicts.", "caption"));
     for (const row of checked) {
       const result = row.result,
         [label, cls] = outcome(result),
@@ -495,8 +841,8 @@
         for (const note of result.notes || []) card.append(node("p", note, "reason"));
         const how = node("details", undefined, "how");
         how.append(node("summary", "How this was checked"));
-        if (result.decomposed) showDecomposed(card, how, result.decomposed);
-        showResearch(how, result.research);
+        if (result.decomposed) showDecomposed(card, how, result.decomposed, row.text);
+        showResearch(how, result.research, row.text);
         card.append(how);
       } else {
         const details = node("details");
@@ -554,6 +900,7 @@
           "reason",
         ),
       );
+    showBlips(checked);
   }
 
   const DRAFT_STATUS = {
@@ -605,8 +952,14 @@
     const entry = node("div", undefined, counted ? "evidence counted" : "evidence");
     const when = row.published_at ? `published ${row.published_at}` : "publication date unconfirmed";
     // A counted sentence says which way it was read; a contested assertion is unreadable otherwise.
-    const direction = READ_AS[row.relation] ? ` [${READ_AS[row.relation]}]` : "";
-    entry.append(node("p", `${publisher(row.url)} (${when})${direction}: “${displayText(row.text)}”`));
+    // A near miss the second model confirmed says so, because it is why that sentence counts.
+    const confirmed = row.relation === "states" && row.nli ? "; confirmed by a second model" : "";
+    const direction = READ_AS[row.relation] ? ` [${READ_AS[row.relation]}${confirmed}]` : "";
+    // The publisher's name is the link to the validated source record; a bare name when there is none.
+    const line = node("p");
+    line.append(sourceLink(row.url, publisher(row.url)) || node("span", publisher(row.url)),
+                node("span", ` (${when})${direction}: “${displayText(row.text)}”`));
+    entry.append(line);
     if (row.qualifiers?.length)
       entry.append(node("p", `Scope stated in the sentence: ${row.qualifiers.join("; ")}.`, "reason"));
     for (const definition of row.definitions || [])
@@ -617,8 +970,6 @@
       entry.append(node("p", "Found by caption-concept research, which does not resolve the claim.", "reason"));
     else if (row.not_counted && !row.period?.length)
       entry.append(node("p", `Shown, not counted: ${row.not_counted}.`, "reason"));
-    const link = sourceLink(row.url, "Open source");
-    if (link) entry.append(link);
     return entry;
   }
 
@@ -626,22 +977,26 @@
   // composed by fixed rules. Everything shown is a quoted sentence or a source record; the
   // judge's reading is not a verified verdict and the card says so. The verdict lines and the
   // counted sentences stay in view; related sentences and the method fold away, nothing is dropped.
-  function showDecomposed(card, how, draft) {
+  function showDecomposed(card, how, draft, claim) {
     const verdict = draft.verdict;
-    card.append(node("p", "Draft reading of quoted sources by fixed rules; not a verified verdict.", "caption"));
     how.append(node("h3", "Sentence-level reading (draft)"));
     how.append(node("p", `${summaryText(verdict)}. ${draft.status}`, "reason"));
     for (const limit of verdict.scope_limits || []) how.append(node("p", limit, "reason"));
     for (const note of verdict.scope_notes || []) how.append(node("p", note, "reason"));
 
-    // The judge's record introduces the sentences a count rests on; with nothing counted it is method.
-    const counted = (verdict.assertions || []).some((assertion) => assertion.evidence?.length);
+    const assertions = verdict.assertions || [];
+    // The reading's record introduces the sentences a count rests on; with nothing counted it is method.
+    const counted = assertions.some((assertion) => assertion.evidence?.length);
     if (verdict.judge_note) (counted ? card : how).append(node("p", verdict.judge_note, "reason"));
-    for (const assertion of verdict.assertions || []) {
+    for (const assertion of assertions) {
       const limits = assertion.limits?.length ? `: ${assertion.limits.join("; ")}` : "";
       // An established assertion names the dated source it rests on, so one source is never read as many.
       const basis = assertion.basis ? ` (${assertion.basis})` : "";
-      card.append(node("p", `“${assertion.text}” is ${DRAFT_STATUS[assertion.status] || assertion.status}${basis}${limits}.`, "verdict-line"));
+      const status = DRAFT_STATUS[assertion.status] || assertion.status;
+      // An assertion that is the claim printed just above is not quoted again; any other part is named.
+      card.append(node("p", assertions.length === 1 && assertion.text.trim() === String(claim ?? "").trim()
+        ? `${status[0].toUpperCase()}${status.slice(1)}${basis}${limits}.`
+        : `“${assertion.text}” is ${status}${basis}${limits}.`, "verdict-line"));
       // Rank and scope belong to this assertion; earlier quotations cannot replace its best rows.
       const selected = (assertion.relevant || []).slice(0, MAX_RELEVANT);
       if (assertion.evidence?.length) {
@@ -664,18 +1019,24 @@
       how.append(node("p", `Read as context, never as evidence: ${withheld.map(([reason, count]) => `${count} ${reason}`).join(", ")}.`, "reason"));
   }
 
-  function showResearch(card, research) {
+  function showResearch(card, research, claim) {
     if (research.search_cutoff)
       card.append(node("p", `Source search boundary: ${research.search_cutoff}. ${research.cutoff_basis}.`, "reason"));
     card.append(node("h3", "Web research"));
-    for (const assertion of research.assertions || []) {
-      card.append(node("p", assertion.text), node("p", assertion.needs, "reason"));
-      card.append(node("p", assertion.source_ids?.length
-        ? `Candidate pages: ${assertion.source_ids.join(", ")} (see Inspect web sources).`
-        : "No usable candidate excerpts found for this assertion.", "reason"));
+    const searched = research.assertions || [];
+    for (const assertion of searched) {
+      const pages = assertion.source_ids?.length || 0;
+      const found = pages ? `${pages} candidate ${pages === 1 ? "page" : "pages"}` : "no usable candidate excerpts";
+      // The exact queries are under Search context; this line names what was searched for.
+      const solo = searched.length === 1 && assertion.text.trim() === String(claim ?? "").trim();
+      card.append(node("p", solo ? `News search: ${found}.` : `“${assertion.text}”: ${found}.`, "reason"));
     }
+    // Pages that failed are counted with their distinct reasons; each attempted address is listed below.
+    const errors = research.errors || [];
+    const reasons = [...new Set(errors.map((error) => String(error).replace(/\.$/, "")))];
+    if (errors.length)
+      card.append(node("p", `${errors.length} ${errors.length === 1 ? "page" : "pages"} could not be read: ${reasons.join("; ")}.`, "reason"));
     for (const gap of research.gaps || []) card.append(node("p", gap, "reason"));
-    for (const error of research.errors || []) card.append(node("p", error, "reason"));
     const details = node("details");
     details.append(node("summary", "Inspect web sources"));
     for (const source of research.sources || []) {
@@ -716,8 +1077,8 @@
   }
 
   async function run() {
-    expand(true);
     if (busy) return;
+    if (!host) build();
     if (currentId() !== videoId) {
       reset();
       videoId = currentId();
@@ -726,10 +1087,23 @@
     busy = true;
     ui.check.disabled = true;
     ui.cards.replaceChildren();
-    ui.status.textContent =
-      "Reading recent captions and checking… The first check loads the models. Research and reading take up to a minute.";
+    entries = [];
+    folded = 0;
+    failure = "";
+    const waiting = (seconds) =>
+      `Reading recent captions and checking… ${seconds} s. The first check loads the models; research and reading take up to a minute.`;
+    ui.status.textContent = waiting(0);
     const requestedId = currentId(),
       requestVersion = ++version;
+    started = Date.now();
+    renderBlips();
+    // A minute of silence reads as a hang; the counter shows the check is still running.
+    const ticker = setInterval(() => {
+      if (requestVersion !== version || !busy) return;
+      const seconds = Math.round((Date.now() - started) / 1000);
+      ui.status.textContent = waiting(seconds);
+      if (blipUi?.wait) blipUi.wait.textContent = `Checking what you just heard · ${seconds} s`;
+    }, 1000);
     try {
       if (contextReady) await contextReady;
       if (requestVersion !== version || currentId() !== requestedId) return;
@@ -746,24 +1120,25 @@
         throw new Error("The video changed. Check again.");
       showResult(response.result);
     } catch (error) {
-      if (requestVersion === version) ui.status.textContent = error.message;
+      if (requestVersion === version) ui.status.textContent = failure = error.message;
     } finally {
+      clearInterval(ticker);
       if (requestVersion === version) {
         busy = false;
         ui.check.disabled = false;
+        renderBlips();
       }
     }
   }
+  // The toolbar icon and the keyboard shortcut check what was just heard; results arrive as blips.
   chrome.runtime.onMessage.addListener((message) => {
-    if (message.type !== "open-checker") return;
+    if (message.type !== "open-checker" || !currentId()) return;
     if (currentId() !== videoId) {
       reset();
       videoId = currentId();
       if (ui) restoreContext(videoId);
     }
-    shortsOpen = true;
-    mount();
-    if (!host?.isConnected) return;
+    place();
     run();
   });
 })();

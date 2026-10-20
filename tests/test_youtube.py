@@ -78,7 +78,8 @@ def test_default_news_search_runs_without_keys_or_a_backend_and_assigns_no_web_v
     try:
         result = checker.check(payload(captions=[{"start": 10, "end": 15, "text": claim}]))
         assert calls == ["begin", claim]
-        assert "experimental news research enabled" in result["scope"]
+        assert "experimental news research" in result["scope"] and "Wikipedia" not in result["scope"]
+        assert "source applicability unverified" in result["scope"]
         row = result["rows"][0]["result"]
         assert row["verdict"] is None and row["outcome"] == "declined_web_review"
         assert row["research"]["sources"] == []
