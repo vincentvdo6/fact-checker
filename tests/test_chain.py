@@ -107,6 +107,39 @@ def test_a_judge_that_counts_every_sentence_moves_the_verdict_only_through_asser
     assert assertion["basis"].startswith("2 independent sources: ")
 
 
+def test_a_source_repeating_the_speakers_words_never_counts_even_for_a_judge_that_counts_everything():
+    claim = "We suffered the worst inflation in 48 years but perhaps even in the history of our country."
+    reprint = "We suffered the worst inflation in 48 years, but perhaps even in the history of our country, they're not sure."
+    measured = "Consumer prices rose 9.1% in the year to June 2022, the fastest pace in about 40 years."
+    plan = {**PLAN, "context": "Thank you very much. It is a great honor to be here tonight.",
+            "sources": [{**PLAN["sources"][1], "excerpts": [reprint], "reading_passages": [reprint]},
+                        {**PLAN["sources"][4], "excerpts": [measured]}]}
+    result = check_claim(claim, plan, states_everything)
+    assertion = result["verdict"]["assertions"][0]
+    assert [row["text"] for row in assertion["evidence"]] == [measured]
+    assert result["gate"]["withheld"] == {"reprint of the speaker's own words": 1}
+    assert assertion["basis"] == "one source: bls.gov (published 2025-04-01)"
+    alone = check_claim(claim, {**plan, "sources": plan["sources"][:1]}, states_everything)
+    assert alone["verdict"]["relationship"] == "insufficient", "a reprint alone leaves the claim unresolved"
+
+
+def test_a_known_speech_date_renders_when_nothing_is_quoted():
+    scope = {"country": "United States", "spoken_at": "2025-06-01", "spoken_at_basis": "YouTube broadcast metadata (UTC)",
+             "country_basis": "detected from captions"}
+    result = check_claim("Library visits rose.", {"context": "", "sources": [], "claim_scope": scope}, states_everything)
+    assert result["verdict"]["relationship"] == "insufficient"
+    assert "2025-06-01" in result["text"], "the scope line keeps the claim's own date"
+    from src.verdict.span_render import render
+
+    with_stray = {**result["verdict"], "scope_limits": ["only 2024 was searched"]}
+    try:
+        render(with_stray, "Library visits rose.")
+    except ValueError as error:
+        assert "2024" in str(error)
+    else:
+        raise AssertionError("a figure outside the scope notes' dates is still rejected")
+
+
 def test_a_regional_sentence_counted_for_a_national_claim_is_qualified_by_its_place():
     declared = {"country": "United States", "spoken_at": "", "country_basis": "supplied by the viewer"}
     regional = {**PLAN, "claim_scope": declared, "sources": [dict(row) for row in PLAN["sources"][:2]]}   # amnesty context, WPR

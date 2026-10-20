@@ -120,8 +120,10 @@ def render(verdict: dict, claim: str) -> str:
     text = "\n".join(lines)
     quoted = [item["text"] for item in rendered] + [definition["text"] for item in rendered for definition in item["definitions"]]
     # The reliability line's figures come from the judge's measurement record, not from any source or model prose.
+    # A scope note's day is the claim's own speech date from its metadata, present even when nothing is quoted.
+    scope_days = [day for note in verdict.get("scope_notes", []) for day in _DATE.findall(note)]
     grounds = [claim, *quoted, *map(display_text, quoted), *(item["published_at"] for item in rendered),
-               verdict.get("judge_note", "")]
+               verdict.get("judge_note", ""), *scope_days]
     stray = ungrounded_figures(text, grounds)
     if stray:
         raise ValueError(f"Rendered prose contains figures found in no quoted sentence: {stray}")

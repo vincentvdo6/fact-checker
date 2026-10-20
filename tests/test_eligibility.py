@@ -46,7 +46,7 @@ def test_context_roles_withhold_even_when_paired_with_an_observation():
     assert gate["withheld"] == {"attributed opinion": 1, "forecast or expectation": 1,
                                 "hypothetical or illustration": 1, "instruction or navigation text": 1,
                                 "definition without a reported observation": 2}
-    assert set(CONTEXT_ROLES) == {"attributed_opinion", "forecast", "hypothetical", "instruction", "caption"}
+    assert set(CONTEXT_ROLES) == {"speech_reprint", "attributed_opinion", "forecast", "hypothetical", "instruction", "caption"}
 
 
 def test_unknown_role_is_withheld_not_guessed():

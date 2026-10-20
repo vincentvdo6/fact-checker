@@ -17,9 +17,10 @@ from __future__ import annotations
 from src.verdict.reading import ROLES
 
 # A sentence carrying any of these is read as context however it is also labelled.
-CONTEXT_ROLES = ("attributed_opinion", "forecast", "hypothetical", "instruction", "caption")
+CONTEXT_ROLES = ("speech_reprint", "attributed_opinion", "forecast", "hypothetical", "instruction", "caption")
 
 REASONS = {
+    "speech_reprint": "reprint of the speaker's own words",
     "attributed_opinion": "attributed opinion",
     "forecast": "forecast or expectation",
     "hypothetical": "hypothetical or illustration",

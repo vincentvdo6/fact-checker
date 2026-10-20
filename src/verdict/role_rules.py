@@ -14,11 +14,23 @@ reports its agreement with the archived model annotations as a comparison, not a
 Errors are expected in both directions; the gate is conservative when they are in the
 withholding direction and the pair judge still has to be wrong for a kept sentence to
 count.
+
+One cue does look outside the source: the speaker's own words. A search for a spoken claim
+returns transcripts of the speech and articles quoting it, and a sentence that repeats the
+claim is not evidence for it -- on recorded clicks it was the commonest way a false claim
+was counted as supported. A sentence that repeats `REPRINT_RUN` consecutive words of the
+captions is typed `speech_reprint`, and so is one sharing most of its word triples with them
+when it opens a quotation or another sentence on its page matches too: captions and reprints
+differ by disfluencies and spellings, while a lone unquoted near match is how a news report
+restates a short claim. A page
+whose URL names a transcript or the text of a speech is someone speaking throughout. Short
+runs are left alone, because independent reporting of the same event in plain words is evidence.
 """
 
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from urllib.parse import urlsplit
 
 from src.pipeline.segment import AUXILIARIES, IRREGULAR_PAST, QUESTION_OPENERS
@@ -27,6 +39,10 @@ from src.retrieval.visible_text import inline_links
 _WORD = re.compile(r"[A-Za-z][A-Za-z'’-]*")
 _LINK = re.compile(r"\[[^\]]*\]\([^)]*\)|https?://\S+|www\.\S+")
 _QUOTE = re.compile(r"[\"“”][^\"“”]{6,}[\"“”]")
+# A quotation whose opening mark sat in an earlier sentence still ends in its attribution.
+_QUOTE_TAIL = re.compile(r"[\"”]\s*,?\s*(?:(?:(?:[A-Z][\w.'’-]*|he|she|they|we|I)\s+){1,6}"
+                         r"(?:said|says|told|added|wrote|asked|stated|noted|explained|recalled|insisted|remarked|argued|claimed)\b"
+                         r"|(?:said|says|added|wrote|asked)\s+[A-Z])")
 _ROLE_PREFIX = re.compile(r"^[A-Z][A-Z ]{2,}:\s")
 _FUTURE = re.compile(r"\b(?:will|won't|expects?|expected|expecting|forecasts?|forecasting|projected|projects|projections?|"
                      r"predicts?|predicted|predictions?|anticipates?|anticipated|outlook|next (?:week|month|quarter|year)|"
@@ -77,7 +93,18 @@ IMPERATIVES = frozenset("""
     call email join register buy order note please treat return use try get find go tell say write
     """.split())
 
-ROLES = ("reported_observation", "definition", "hypothetical", "forecast", "attributed_opinion", "instruction", "caption", "unknown")
+ROLES = ("reported_observation", "definition", "hypothetical", "forecast", "attributed_opinion", "instruction", "caption",
+         "speech_reprint", "unknown")
+
+# Long enough that independent reporting almost never repeats a speaker's phrasing by chance,
+# short enough to catch a quoted clause.
+REPRINT_RUN = 10
+# Captions and reprints differ by disfluencies ("over a 100,000", "out of of") and spellings
+# ("Katherine"/"Catherine"), so a sentence most of whose word triples the speaker said is a reprint too.
+REPRINT_TRIGRAMS, REPRINT_SHARE = 5, 0.6
+_OPENS_QUOTE = re.compile(r"\s*[“\"]")
+_SPEECH_WORD = re.compile(r"[a-z0-9]+(?:'[a-z0-9]+)*")
+_SPEECH_TEXT_KINDS = frozenset("speech speeches address remarks debate interview testimony".split())
 
 
 def _finite_verb(words: list[str]) -> bool:
@@ -100,7 +127,58 @@ def caption_passage(text: str) -> bool:
     return bool(_CREDIT_TAIL.search(text.strip()[-120:]))
 
 
-def type_sentence(text: str, *, previous: dict | None = None, spoken: bool = False, caption: bool = False) -> dict:
+def speech_text_source(url: str) -> bool:
+    """Whether a URL path names a transcript, "remarks by" someone, or the text of a speech or debate.
+
+    The text of a bill or a report is a primary source and is not matched: "text" counts only
+    beside a kind of spoken event.
+    """
+    tokens = [token for token in re.split(r"[/_.\-]+", urlsplit(url or "").path.lower()) if token]
+    if {"transcript", "transcripts"} & set(tokens):
+        return True
+    if any(first == "remarks" and second == "by" for first, second in zip(tokens, tokens[1:])):
+        return True
+    return bool({"text", "full"} & set(tokens)) and bool(_SPEECH_TEXT_KINDS & set(tokens))
+
+
+def _speech_words(text: str) -> list[str]:
+    parts, cursor = [], 0
+    for link in inline_links(text):
+        parts.extend((text[cursor:link["start"]], link["label"]))
+        cursor = link["end"]
+    plain = _LINK.sub(" ", "".join(parts) + text[cursor:])
+    plain = plain.lower().replace("’", "'").replace("‘", "'").replace("%", " percent ")
+    return _SPEECH_WORD.findall(plain)
+
+
+def _grams(words: list[str], size: int) -> set[tuple[str, ...]]:
+    return {tuple(words[start:start + size]) for start in range(len(words) - size + 1)}
+
+
+def speech_runs(speech: Sequence[str]) -> tuple[frozenset[tuple[str, ...]], frozenset[tuple[str, ...]]]:
+    """The speaker's runs of `REPRINT_RUN` words and word triples, read in the order given."""
+    words = [word for text in speech for word in _speech_words(text)]
+    return frozenset(_grams(words, REPRINT_RUN)), frozenset(_grams(words, 3))
+
+
+def speech_match(text: str, runs: tuple[frozenset[tuple[str, ...]], frozenset[tuple[str, ...]]]) -> str | None:
+    """How a source sentence repeats the speaker's words, ignoring case, punctuation and links.
+
+    "run" for a whole run of `REPRINT_RUN` words; "near" for at least `REPRINT_TRIGRAMS` of the
+    sentence's word triples making up `REPRINT_SHARE` of them, which a news sentence restating a
+    short claim also reaches, so `annotate` needs a second matching sentence on the page.
+    """
+    long_runs, triples = runs
+    words = _speech_words(text)
+    if long_runs & _grams(words, REPRINT_RUN):
+        return "run"
+    own = _grams(words, 3)
+    shared = len(own & triples)
+    return "near" if own and shared >= REPRINT_TRIGRAMS and shared / len(own) >= REPRINT_SHARE else None
+
+
+def type_sentence(text: str, *, previous: dict | None = None, spoken: bool = False, caption: bool = False,
+                  reprint: bool = False) -> dict:
     """Roles for one sentence and the named cues that produced them.
 
     `previous` is the typing of the sentence before it in the same paragraph: a sentence that
@@ -108,7 +186,8 @@ def type_sentence(text: str, *, previous: dict | None = None, spoken: bool = Fal
     previous sentence carried, because the attribution was made once for the run. `spoken` marks
     a sentence from a transcript or an opinion-section page, where every sentence is someone's
     statement or argument. `caption` marks a sentence from a passage that ends in an image credit,
-    where every sentence describes a picture.
+    where every sentence describes a picture. `reprint` marks a sentence that repeats the speaker's
+    own words, which restates the claim rather than evidencing it.
     """
     # Linked words still carry role cues. Keep the original prose-only observation
     # checks: a linked headline or navigation label alone does not establish a finding.
@@ -135,7 +214,7 @@ def type_sentence(text: str, *, previous: dict | None = None, spoken: bool = Fal
         add("instruction", "imperative_opener")
     if _NAVIGATION.search(text) or _NAVIGATION.search(visible) or _ROLE_PREFIX.match(text.strip()):
         add("instruction", "navigation_phrase")
-    if _QUOTE.search(text) and _SPEECH.search(text):
+    if (_QUOTE.search(text) and _SPEECH.search(text)) or _QUOTE_TAIL.search(text):
         add("attributed_opinion", "quoted_speech")
     if _OPINION.search(cue_prose) or _OPINION.search(visible):
         add("attributed_opinion", "opinion_marker")
@@ -145,6 +224,8 @@ def type_sentence(text: str, *, previous: dict | None = None, spoken: bool = Fal
         add("attributed_opinion", "spoken_or_opinion_source")
     if caption:
         add("caption", "image_credit_tail")
+    if reprint:
+        add("speech_reprint", "reprints_speech")
     if previous and "attributed_opinion" in previous.get("roles", ()):
         if cue_prose[:1] in "\"“" or visible[:1] in "\"“":
             add("attributed_opinion", "quote_continues")
@@ -174,15 +255,31 @@ def type_sentence(text: str, *, previous: dict | None = None, spoken: bool = Fal
     return {"roles": roles, "cues": cues}
 
 
-def annotate(reading: dict) -> list[dict]:
-    """Role rows for every sentence of a reading packet, in the shape the gate validates."""
+def annotate(reading: dict, *, speech: Sequence[str] = ()) -> list[dict]:
+    """Role rows for every sentence of a reading packet, in the shape the gate validates.
+
+    `speech` is the speaker's own text in spoken order -- the captions before the claim, then the
+    claim -- against which reprints are found; without it no sentence is typed a reprint. A near
+    match is a reprint only when it opens a quotation or another distinct sentence of the same
+    source matches too.
+    """
     spoken = {source["id"]: transcript_source(source.get("reading_context", [])) or opinion_source(source.get("url", ""))
-              for source in reading["sources"]}
+              or speech_text_source(source.get("url", "")) for source in reading["sources"]}
+    runs = speech_runs(speech)
+    matches, matched = {}, {}
+    for passage in reading["passages"]:
+        for unit in passage["units"]:
+            if kind := speech_match(unit["text"], runs):
+                matches[unit["id"]] = kind
+                matched.setdefault(passage["source_id"], set()).add(tuple(_speech_words(unit["text"])))
     rows = []
     for passage in reading["passages"]:
         previous, caption = None, caption_passage(passage["text"])
+        page = len(matched.get(passage["source_id"], ())) > 1
         for unit in passage["units"]:
+            kind = matches.get(unit["id"])
+            near = kind == "near" and (page or bool(_OPENS_QUOTE.match(unit["text"])))
             previous = type_sentence(unit["text"], previous=previous, spoken=spoken.get(passage["source_id"], False),
-                                     caption=caption)
+                                     caption=caption, reprint=kind == "run" or near)
             rows.append({"unit_id": unit["id"], **previous})
     return rows

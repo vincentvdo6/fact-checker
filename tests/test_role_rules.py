@@ -199,3 +199,113 @@ def test_a_passage_ending_in_an_image_credit_is_a_caption_throughout():
     plain = annotate(reading_packet({"sources": [{"id": "s1", "url": "https://example.org/news/x",
                                                   "excerpts": ["U.S. forces captured Nicolas Maduro on January 3."]}]}))
     assert plain[0]["roles"] == ["reported_observation"], "the same sentence outside a caption reports"
+
+
+def test_a_quotation_ending_in_its_attribution_is_quoted_speech_even_when_it_opened_earlier():
+    for sentence in ("I spoke to his brother… and I said please extend my best wishes,” Trump said.",
+                     "That is the plan,” he added.", "We will cut costs,\" said Governor Lee.",
+                     "Rates will stay high for longer,” Federal Reserve Chair Jerome Powell told reporters."):
+        assert "attributed_opinion" in roles(sentence), sentence
+    for sentence in ("The report, titled “Jobs in Transition,” found that hiring fell 3% in July.",
+                     "Hiring fell 3% in July, according to the “Jobs Day” release."):
+        assert roles(sentence) == ["reported_observation"], sentence
+
+
+def test_a_sentence_repeating_ten_words_of_the_speech_is_a_reprint_whatever_its_punctuation():
+    from src.verdict.role_rules import REPRINT_RUN, speech_match, speech_runs
+
+    assert REPRINT_RUN == 10
+    runs = speech_runs(["we suffered the worst inflation in 48 years but perhaps even in the history of our country",
+                        "that's why over the past six years deportations of criminals are up 80 percent"])
+    assert speech_match("We suffered the worst inflation in 48 years, but perhaps even in the history of our country, "
+                        "they're not sure.", runs) == "run"
+    assert speech_match("That’s why, over the past six years, deportations of criminals are up 80%.", runs) == "run"
+    exact = speech_runs(["deportations of criminals are up 80 percent over six years"])
+    assert speech_match("Deportations of criminals are up 80% over six years.", exact) == "run", "a percent sign is the word"
+    assert speech_match("He said [the worst inflation in 48 years, but perhaps even in](https://x.example/a) history.", runs) == "run"
+    # The captions before the claim and the claim are one stretch of speech; a quotation can span the join.
+    joined = speech_runs(["Look, the number of people trying to cross", "our border illegally is at its lowest level."])
+    assert speech_match("The number of people trying to cross our border illegally is at its lowest.", joined) == "run"
+    ten = speech_runs(["Unemployment in the state fell to four percent last spring, officials said."])
+    assert speech_match("Unemployment in the state fell to four percent last spring.", ten) == "run", "exactly ten words"
+    assert speech_match("Unemployment in the state fell to four percent last year.", ten) == "near", "nine shared words"
+    assert speech_match("Inflation peaked at 9.1 percent in June 2022, the highest in about 40 years.", runs) is None
+    assert speech_match("We suffered the worst inflation in 48 years.", speech_runs([])) is None, "no speech, no reprint"
+
+
+def test_a_reprint_is_recognised_through_caption_disfluencies_and_spelling_differences():
+    from src.verdict.role_rules import speech_match, speech_runs
+
+    debate = speech_runs(["Number two, we got over a 100,000 Americans and others out of of Afghanistan during that airlift."])
+    assert speech_match("Number two, we got over 100,000 Americans and others out of Afghanistan during that Airlift.", debate) == "near"
+    address = speech_runs(["For five years she struggled.", "One drug has been costing Katherine $4,000 to purchase."])
+    assert speech_match("“One drug has been costing Catherine $4,000 to purchase.", address) == "near"
+    # The same event reported in a publisher's own words is evidence, not a reprint.
+    assert speech_match("The U.S. military evacuated more than 120,000 people from Kabul airport in August 2021.", debate) is None
+    assert speech_match("Drug prices for IVF patients fell after the new website launched.", address) is None
+    assert speech_match("We got over 100,000 people out.", debate) is None
+    council = speech_runs(["Last week the council voted to close three libraries in the north."])
+    assert speech_match("The council voted to close three libraries today.", council) == "near", "five of six triples"
+    # Four shared word triples are not enough, however short the sentence; five in a long one are not most of it.
+    assert speech_match("The council voted to close three branches today.", council) is None
+    assert speech_match("Residents were angry after the council voted to close three libraries and said they would "
+                        "protest at city hall.", council) is None
+
+
+def test_reprints_are_withheld_as_the_speakers_words_and_only_when_the_speech_is_given():
+    claim = "And over the past six years, illegal border crossings have been cut by more than half."
+    packet = {"sources": [{"id": "s1", "url": "https://www.example.org/2026/06/13/border/",
+                           "excerpts": ["And over the past six years, illegal border crossings have been cut by more than half.”",
+                                        "Apprehensions at the southwest border fell 32% from 2008 to 2014."]}]}
+    reading = reading_packet(packet)
+    rows = annotate(reading, speech=("Tonight I want to talk about immigration.", claim))
+    assert "speech_reprint" in rows[0]["roles"] and "reprints_speech" in rows[0]["cues"]
+    assert rows[1]["roles"] == ["reported_observation"], "the publisher's own measurement stays evidence"
+    gate = gate_units(reading, validate_roles(reading, rows))
+    assert gate["eligible_ids"] == ["s1:p2:u1"]
+    assert gate["withheld"] == {"reprint of the speaker's own words": 1}
+    blind = annotate(reading)
+    assert all("speech_reprint" not in row["roles"] for row in blind), "claim-blind typing is unchanged"
+
+
+def test_a_near_match_is_a_reprint_only_where_its_page_repeats_the_speech_elsewhere_too():
+    speech = ("Look, it was a very bad night for them.", "Japan's ruling coalition lost its majority in the upper house.")
+    restated = "Japan's ruling coalition has lost its majority in the Upper House."
+    packet = {"sources": [
+        {"id": "s1", "url": "https://news.example/japan",
+         "excerpts": [restated + " Turnout was 58%.", "Polls closed at eight. " + restated]},
+        {"id": "s2", "url": "https://blog.example/rally", "excerpts": ["Look, it was a very bad night for them.", restated]}]}
+    reading = reading_packet(packet)
+    rows = {row["unit_id"]: row for row in annotate(reading, speech=speech)}
+    texts = {unit["id"]: (passage["source_id"], unit["text"]) for passage in reading["passages"] for unit in passage["units"]}
+    news = [rows[uid]["roles"] for uid, (source, text) in texts.items() if source == "s1" and text == restated]
+    assert len(news) == 2 and all("speech_reprint" not in roles for roles in news), "a report restating the claim once is evidence"
+    reprinted = [rows[uid]["roles"] for uid, (source, _) in texts.items() if source == "s2"]
+    assert len(reprinted) == 2 and all("speech_reprint" in roles for roles in reprinted)
+
+
+def test_a_near_match_that_opens_a_quotation_is_the_speaker_quoted_even_alone_on_its_page():
+    speech = ("For five years she struggled.", "One drug has been costing Katherine $4,000 to purchase.")
+    quoted = "“One drug has been costing Catherine $4,000 to purchase."
+    reading = reading_packet({"sources": [{"id": "s1", "url": "https://news.example/ivf", "excerpts": [quoted]},
+                                          {"id": "s2", "url": "https://news.example/drugs", "excerpts": [quoted[1:]]}]})
+    rows = annotate(reading, speech=speech)
+    assert ["speech_reprint" in row["roles"] for row in rows] == [True, False]
+
+
+def test_a_page_whose_url_names_a_transcript_or_a_speechs_text_is_speech_throughout():
+    from src.verdict.role_rules import speech_text_source
+
+    assert speech_text_source("https://www.pbs.org/newshour/politics/read-the-full-text-of-trumps-speech-to-a-joint-session-of-congress")
+    assert speech_text_source("https://www.whitehouse.gov/briefing-room/speeches-remarks/2024/06/04/remarks-by-president-biden-on-the-border/")
+    assert speech_text_source("https://www.rev.com/blog/transcripts/vance-walz-vp-debate-transcript")
+    assert speech_text_source("https://example.org/news/debate_full_text.html")
+    assert speech_text_source("https://www.pbs.org/newshour/politics/read-trumps-full-2026-state-of-the-union-address")
+    assert not speech_text_source("https://example.org/news/full-coverage-of-the-storm")
+    assert not speech_text_source("https://www.congress.gov/news/read-the-full-text-of-the-bill")
+    assert not speech_text_source("https://www.pbs.org/newshour/nation/heres-obama-will-say-tonight-immigration-speech")
+    assert not speech_text_source("https://example.org/news/remarks-on-the-economy") and not speech_text_source("")
+    packet = {"sources": [{"id": "s1", "url": "https://www.pbs.org/newshour/politics/read-the-full-text-of-trumps-speech-to-congress",
+                           "excerpts": ["Inflation fell to 3% last year. We secured the border."]}]}
+    rows = annotate(reading_packet(packet))
+    assert all("attributed_opinion" in row["roles"] and "spoken_or_opinion_source" in row["cues"] for row in rows)

@@ -48,9 +48,12 @@ def research_packet(claim: str, plan: dict) -> dict:
 def check_claim(claim: str, plan: dict, judge: Judge) -> dict:
     """Live path: rule-typed roles over a research plan, then the chain. The result is a draft."""
     packet = research_packet(claim, plan)
-    result = run_chain(packet, annotate(reading_packet(packet)), judge)
+    # The speaker's words, in spoken order, so a page repeating them is read as the speech, not as evidence.
+    speech = (packet["claim_context"], claim)
+    result = run_chain(packet, annotate(reading_packet(packet), speech=speech), judge)
     return result | {"roles": "closed-class rules, measured against labels/roles-*.json",
-                     "status": "draft: rule-composed from an unmeasured judge; not a verified verdict"}
+                     "status": "draft: rule-composed from a sentence judge measured on written claims, not on "
+                               "captions; not a verified verdict"}
 
 
 def run_chain(packet: dict, annotations: list[dict], judge: Judge) -> dict:
