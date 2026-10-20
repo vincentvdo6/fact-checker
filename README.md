@@ -9,6 +9,50 @@ The browser extension lets a viewer request a check and inspect supporting sourc
 quotations and links. It remains a development prototype; the offline results
 below measure individual components, not reliability on political videos.
 
+## What a check looks like
+
+Pause after a claim and press **Check what I just heard**. The extension reads the last
+30 seconds of captions, and the local checker picks up to three check-worthy sentences.
+It searches Google News for each one and reads the pages on your machine, then shows one
+card per claim, newest first:
+
+- **The badge.** "Supported" or "Contradicted" appears only when an independent source with
+  a confirmed date states it. Otherwise the card says "Not established", which is the usual
+  result on real speech.
+- **The quotes.** Every source sentence is quoted word for word with its publisher, date and
+  a link. Sentences that bear on the claim without stating it are listed under *Relevant,
+  not counted* and never decide the badge.
+- **How this was checked.** This section lists what was set aside and why: attributed
+  opinion, forecasts, image captions, and the speaker's own words reprinted by a transcript
+  or a quoting article. It also lists the searches and the pages that failed to load.
+
+Three checks recorded on 2026-10-20. Each was rendered by the extension's own panel code
+over the saved result; the video player is not shown.
+
+| Jobs report (CBS News) | Functional unemployment (CBS News) | 2026 State of the Union |
+| --- | --- | --- |
+| <img src="docs/demo/jobs-report-card.png" width="260" alt="Card for a jobs-report claim: not established, with relevant CNBC sentences quoted"> | <img src="docs/demo/functional-unemployment-card.png" width="260" alt="Card for a functional unemployment claim: not established, with CBS sentences giving both figures"> | <img src="docs/demo/state-of-the-union-card.png" width="260" alt="Card for a State of the Union claim: reprints of the speech withheld"> |
+| CNBC's "It was the third time in five months that the economy lost jobs" is shown but not counted. The judge read it as stating the claim with 0.83 confidence, below its counting threshold of 0.854. That threshold was fitted on FEVER to a 95% target stated in advance. | CBS gives both of the claim's figures, 24.9% (Ludwig Institute) and 4.1%, in separate sentences. No single sentence states the claim as a whole, so it stays not established. | Six sentences from the published transcript and from articles quoting the speech are recognised as the speaker's own words and set aside. |
+
+**On real videos the reading rarely commits, and when it does it is often wrong.** The
+latest run covered eight videos: news segments, a press conference, a press gaggle, a
+debate, a State of the Union address and a Senate hearing. It made 20 clicks and checked
+51 claims. 48 were not established. Three pointed a direction:
+
+- "Construction, we saw 11,000 jobs" was counted as supported. In the CNBC sentence it
+  rested on, the 11,000 belonged to another sector.
+- "We didn't do a thing when the attack took place" was counted as contradicted by an
+  unrelated article.
+- "The US military has never been deployed" was counted as contradicted. That is right for
+  the words as captioned, but the caption cut off the speaker's "at our polls".
+
+The sentence judge was measured on written claims (see Findings) and does not transfer
+cleanly to captions. Since that measurement, reprints of the speech itself are recognised
+and set aside; 67 such sentences were withheld in this run. Caption sentences that cannot
+be researched on their own are listed as not checked, with the reason. These are fragments
+like "Last month it was 32,000", a "he" or "they" that names no one, reported speech, and a
+sentence still being spoken at the click. A click took 21 seconds at the median (6–61 s).
+
 ## Findings
 
 The research question is whether a claim verifier's confidence knows when it was
@@ -120,8 +164,6 @@ an older Wikipedia corpus, which limits their usefulness for recent claims.
 
 Current priorities are to:
 
-- Recognise sources that reprint the speaker's own words, such as speech transcripts
-  and articles quoting the claim, and stop counting them as evidence for it.
 - Retrieve sources that address the actual claim and its context.
 - Distinguish relevant evidence from material that merely shares its wording.
 - Handle missing context, conflicting sources, and uncertainty more clearly.
