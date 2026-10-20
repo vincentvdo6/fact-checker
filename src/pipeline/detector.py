@@ -32,6 +32,7 @@ from pathlib import Path
 import numpy as np
 
 from src.calibration.scaling import from_dict as calibrator_from_dict
+from src.verdict.tokenizer import load_frozen_tokenizer
 
 MODEL = Path("models/checkworthy/v1")
 CALIBRATION_FILE = "calibration.json"
@@ -126,9 +127,7 @@ class CheckworthyDetector:
     @property
     def tokenizer(self):
         if self._tokenizer is None:
-            from transformers import AutoTokenizer
-
-            self._tokenizer = AutoTokenizer.from_pretrained(str(self.root / "model_v1"))
+            self._tokenizer = load_frozen_tokenizer(self.root / "model_v1")
         return self._tokenizer
 
     def score(self, sentence: str) -> Scored:

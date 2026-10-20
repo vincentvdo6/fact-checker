@@ -31,6 +31,7 @@ import numpy as np
 
 from src.verdict.contract import CONTRACT_FILE, EncoderContract
 from src.verdict.encode import build_input
+from src.verdict.tokenizer import load_frozen_tokenizer
 
 MODELS = Path("models/verdict")
 ONNX_FILE = "onnx/verdict.onnx"
@@ -101,9 +102,7 @@ class VerdictRuntime:
     @property
     def tokenizer(self):
         if self._tokenizer is None:
-            from transformers import AutoTokenizer
-
-            self._tokenizer = AutoTokenizer.from_pretrained(str(self.root / "model_v1"))
+            self._tokenizer = load_frozen_tokenizer(self.root / "model_v1")
         return self._tokenizer
 
     def measure(self, first: str, second: str) -> int:

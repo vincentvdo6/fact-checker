@@ -51,10 +51,10 @@ def rows_for(split: str) -> list[dict]:
 @pytest.mark.parametrize("variant_dir", installed() or [pytest.param(None, marks=pytest.mark.skip(
     reason="no installed artifact; run scripts.install_artifacts first"))])
 def test_exported_token_lengths_match_this_repository(variant_dir: Path):
-    from transformers import AutoTokenizer
+    from src.verdict.tokenizer import load_frozen_tokenizer
 
     contract = EncoderContract.from_dict(json.loads((variant_dir / CONTRACT_FILE).read_text()))
-    tokenizer = AutoTokenizer.from_pretrained(str(variant_dir / "model_v1"))
+    tokenizer = load_frozen_tokenizer(variant_dir / "model_v1")
 
     with open(variant_dir / "predictions_test.jsonl", encoding="utf-8") as handle:
         exported = {row["id"]: row for row in map(json.loads, handle)}

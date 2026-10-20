@@ -27,6 +27,7 @@ from src.calibration.scaling import from_dict as calibrator_from_dict
 from src.verdict.assertions import positive_form
 from src.verdict.pair_judgment import RELATIONS
 from src.verdict.quantities import hedged_form
+from src.verdict.tokenizer import load_frozen_tokenizer
 
 MODEL_DIR = Path("models/pair_judge/v4")     # deberta-v3-base, two epochs; v2 (xsmall) stays installed for comparison
 TEMPLATE_ID = "premise_hypothesis_v1"
@@ -84,9 +85,7 @@ class PairJudge:
     @property
     def tokenizer(self):
         if self._tokenizer is None:
-            from transformers import AutoTokenizer
-
-            self._tokenizer = AutoTokenizer.from_pretrained(str(self.root / "model_v1"))
+            self._tokenizer = load_frozen_tokenizer(self.root / "model_v1")
         return self._tokenizer
 
     def logits(self, pairs: list[tuple[str, str]]) -> np.ndarray:
