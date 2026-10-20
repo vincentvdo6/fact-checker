@@ -28,6 +28,20 @@ test("comparisons, ambiguous names, user locale and channel location do not supp
   assert.equal(context({title:"United States news",captions:[{text:"Canada and France signed the agreement."}]}).claim_country,"");
 });
 
+test("America and Americans name the United States, but the continents do not", () => {
+  for (const text of ["We are going to make America affordable again.", "american families are paying more",
+                      "Americans deserve better wages."]) {
+    const result = context({captions:[{text}]});
+    assert.equal(result.claim_country, "United States", text);
+    assert.equal(result.country_basis, "detected from captions");
+  }
+  for (const text of ["Exports to Latin America rose.", "South American growth slowed.", "the North American trade pact",
+                      "Central America saw record rain.", "The American people and Canada agreed."]) {
+    assert.equal(context({captions:[{text}]}).claim_country, "", text);
+  }
+  assert.equal(context({captions:[{text:"Prices in the Americas rose."}]}).claim_country, "", "the plural continent is not a country");
+});
+
 test("publication date alone never becomes the date speech was recorded", () => {
   const result=context({source_published_at:"2025-07-20",title:"Election results, July 15, 2025"});
   assert.equal(result.spoken_at,"");

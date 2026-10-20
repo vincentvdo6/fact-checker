@@ -311,6 +311,20 @@
         font-size:13px;
         margin:8px 0
       }
+      .caption {
+        font-size:11px;
+        color:var(--muted);
+        margin:6px 0 0
+      }
+      .verdict-line {
+        margin:12px 0 4px
+      }
+      .counted {
+        border-left-color:var(--accent)
+      }
+      details.related,details.how,details.skipped {
+        margin-top:12px
+      }
       button:focus-visible,summary:focus-visible,a:focus-visible {
         outline:2px solid #438853;
         outline-offset:2px
@@ -410,23 +424,24 @@
     contextReady = pending ? ready : null;
   }
 
-  // The sentence-level reading's summary, when it has a direction, is what the viewer should see
-  // first. It is a draft composed by rules over quoted sentences, and the badge says so; an
-  // unresolved reading keeps the plain "No verdict".
+  // The sentence-level reading's summary is what the viewer should see first. It is a draft
+  // composed by rules over quoted sentences: the dashed badge and the caption under the claim say
+  // so. Without a reading (the judge is not installed) the plain "No verdict" stays.
   const READING_BADGE = {
-    partially_established: ["Partially established (reading)", "reading-for"],
-    partially_contradicted: ["Partially contradicted (reading)", "reading-against"],
-    qualified_support: ["Supported, not established (reading)", "reading-for"],
-    qualified_contradiction: ["Contradicted, not established (reading)", "reading-against"],
-    contested: ["Contested (reading)", "reading-mixed"],
+    partially_established: ["Partially established", "reading-for"],
+    partially_contradicted: ["Partially contradicted", "reading-against"],
+    qualified_support: ["Supported, not established", "reading-for"],
+    qualified_contradiction: ["Contradicted, not established", "reading-against"],
+    contested: ["Contested", "reading-mixed"],
   };
   function outcome(result) {
     if (result.status === "skipped") return ["Not selected", "skipped"];
     if (result.outcome !== "answered") {
       const verdict = result.decomposed?.verdict;
       if (verdict?.summary === "established")
-        return verdict.relationship === "contradicted" ? ["Contradicted (reading)", "reading-against"] : ["Supported (reading)", "reading-for"];
+        return verdict.relationship === "contradicted" ? ["Contradicted", "reading-against"] : ["Supported", "reading-for"];
       if (verdict && READING_BADGE[verdict.summary]) return READING_BADGE[verdict.summary];
+      if (verdict) return ["Not established", "declined"];
       return ["No verdict", "declined"];
     }
     const labels = {
@@ -450,7 +465,11 @@
       node("p", data.excerpt, "excerpt"),
     );
     ui.cards.append(transcript);
-    for (const row of data.rows) {
+    // The clicked claim is the last one spoken, so cards read back from it; sentences the detector
+    // passed over are listed once at the end rather than as cards of their own.
+    const checked = data.rows.filter((row) => row.result.status !== "skipped").reverse();
+    const skipped = data.rows.filter((row) => row.result.status === "skipped");
+    for (const row of checked) {
       const result = row.result,
         [label, cls] = outcome(result),
         card = node("article");
@@ -458,9 +477,8 @@
         node("span", label, "badge " + cls),
         node("p", row.text, "claim"),
       );
+      // News checks are read sentence by sentence below; the offline verifier's outcomes keep their reasons.
       const reasons = {
-        declined_web_review:
-          "The verifier gives no verdict. The sentence-level reading below composes one from quoted sentences by fixed rules; it is a draft.",
         declined_no_relevant_evidence:
           "No retrieved excerpts passed the topic match check. The verdict model was not run.",
         declined_compound_claim:
@@ -473,18 +491,13 @@
       };
       if (reasons[result.outcome])
         card.append(node("p", reasons[result.outcome], "reason"));
-      if (result.status === "skipped")
-        card.append(
-          node(
-            "p",
-            "The detector did not select this sentence; evidence retrieval was not run.",
-            "reason",
-          ),
-        );
-      else if (result.research) {
-        if (result.decomposed) showDecomposed(card, result.decomposed);
+      if (result.research) {
         for (const note of result.notes || []) card.append(node("p", note, "reason"));
-        showResearch(card, result.research);
+        const how = node("details", undefined, "how");
+        how.append(node("summary", "How this was checked"));
+        if (result.decomposed) showDecomposed(card, how, result.decomposed);
+        showResearch(how, result.research);
+        card.append(how);
       } else {
         const details = node("details");
         details.append(node("summary", "Inspect evidence"));
@@ -520,6 +533,18 @@
         card.append(details);
       }
       ui.cards.append(card);
+    }
+    if (skipped.length) {
+      const list = node("details", undefined, "skipped");
+      list.append(node("summary", `${skipped.length} ${skipped.length === 1 ? "sentence" : "sentences"} not checked`));
+      list.append(node("p", "The detector did not select these sentences, or they could not be checked as heard; evidence retrieval was not run.", "reason"));
+      const why = { fragment: "names nothing to check", "unnamed subject": "who it is about was said earlier",
+                    "reported speech": "reports what someone said", unfinished: "still being spoken" };
+      for (const row of skipped) {
+        const reason = why[String(row.result.filter_reason || "").split(":")[0]];
+        list.append(node("p", reason ? `${row.text} (${reason})` : row.text, "excerpt"));
+      }
+      ui.cards.append(list);
     }
     if (data.omitted_claims)
       ui.cards.append(
@@ -576,8 +601,8 @@
   }
 
   const READ_AS = { states: "read as stating it", states_negation: "read as denying it" };
-  function draftRow(row) {
-    const entry = node("div", undefined, "evidence");
+  function draftRow(row, counted = false) {
+    const entry = node("div", undefined, counted ? "evidence counted" : "evidence");
     const when = row.published_at ? `published ${row.published_at}` : "publication date unconfirmed";
     // A counted sentence says which way it was read; a contested assertion is unreadable otherwise.
     const direction = READ_AS[row.relation] ? ` [${READ_AS[row.relation]}]` : "";
@@ -599,48 +624,54 @@
 
   // The sentence-level draft: verbatim sentences the gate let through, judged one at a time and
   // composed by fixed rules. Everything shown is a quoted sentence or a source record; the
-  // judge's reading is not a verified verdict and the card says so.
-  function showDecomposed(card, draft) {
+  // judge's reading is not a verified verdict and the card says so. The verdict lines and the
+  // counted sentences stay in view; related sentences and the method fold away, nothing is dropped.
+  function showDecomposed(card, how, draft) {
     const verdict = draft.verdict;
-    card.append(node("h3", "Sentence-level reading (draft)"));
-    card.append(node("p", `${summaryText(verdict)}. ${draft.status}`, "reason"));
-    for (const limit of verdict.scope_limits || []) card.append(node("p", limit, "reason"));
-    for (const note of verdict.scope_notes || []) card.append(node("p", note, "reason"));
-    if (verdict.judge_note) card.append(node("p", verdict.judge_note, "reason"));
+    card.append(node("p", "Draft reading of quoted sources by fixed rules; not a verified verdict.", "caption"));
+    how.append(node("h3", "Sentence-level reading (draft)"));
+    how.append(node("p", `${summaryText(verdict)}. ${draft.status}`, "reason"));
+    for (const limit of verdict.scope_limits || []) how.append(node("p", limit, "reason"));
+    for (const note of verdict.scope_notes || []) how.append(node("p", note, "reason"));
 
+    // The judge's record introduces the sentences a count rests on; with nothing counted it is method.
+    const counted = (verdict.assertions || []).some((assertion) => assertion.evidence?.length);
+    if (verdict.judge_note) (counted ? card : how).append(node("p", verdict.judge_note, "reason"));
     for (const assertion of verdict.assertions || []) {
       const limits = assertion.limits?.length ? `: ${assertion.limits.join("; ")}` : "";
       // An established assertion names the dated source it rests on, so one source is never read as many.
       const basis = assertion.basis ? ` (${assertion.basis})` : "";
-      card.append(node("p", `“${assertion.text}” is ${DRAFT_STATUS[assertion.status] || assertion.status}${basis}${limits}.`));
+      card.append(node("p", `“${assertion.text}” is ${DRAFT_STATUS[assertion.status] || assertion.status}${basis}${limits}.`, "verdict-line"));
       // Rank and scope belong to this assertion; earlier quotations cannot replace its best rows.
       const selected = (assertion.relevant || []).slice(0, MAX_RELEVANT);
       if (assertion.evidence?.length) {
         card.append(node("p", "Counted:", "reason"));
-        for (const row of assertion.evidence) card.append(draftRow(row));
+        for (const row of assertion.evidence) card.append(draftRow(row, true));
       }
-      if (selected.length) card.append(node("p", "Relevant, not counted:", "reason"));
       if (assertion.relevant?.length) {
-        for (const row of selected) card.append(draftRow(row));
+        const related = node("details", undefined, "related");
+        related.append(node("summary", `Relevant, not counted (${assertion.relevant.length})`));
+        for (const row of selected) related.append(draftRow(row));
         const more = assertion.relevant.length - selected.length;
-        if (more > 0) card.append(node("p", `… and ${more} more relevant sentences not shown.`, "reason"));
+        if (more > 0) related.append(node("p", `… and ${more} more relevant sentences not shown.`, "reason"));
+        card.append(related);
       }
       if (!assertion.evidence?.length && !assertion.relevant?.length)
         card.append(node("p", `No eligible sentence addresses it (${assertion.judged} of ${assertion.eligible} judged).`, "reason"));
     }
     const withheld = Object.entries(verdict.withheld || {});
     if (withheld.length)
-      card.append(node("p", `Read as context, never as evidence: ${withheld.map(([reason, count]) => `${count} ${reason}`).join(", ")}.`, "reason"));
+      how.append(node("p", `Read as context, never as evidence: ${withheld.map(([reason, count]) => `${count} ${reason}`).join(", ")}.`, "reason"));
   }
 
   function showResearch(card, research) {
     if (research.search_cutoff)
       card.append(node("p", `Source search boundary: ${research.search_cutoff}. ${research.cutoff_basis}.`, "reason"));
-    card.append(node("h3", "What needs checking"));
+    card.append(node("h3", "Web research"));
     for (const assertion of research.assertions || []) {
       card.append(node("p", assertion.text), node("p", assertion.needs, "reason"));
       card.append(node("p", assertion.source_ids?.length
-        ? `Candidate sources: ${assertion.source_ids.join(", ")}. Assertion remains unresolved.`
+        ? `Candidate pages: ${assertion.source_ids.join(", ")} (see Inspect web sources).`
         : "No usable candidate excerpts found for this assertion.", "reason"));
     }
     for (const gap of research.gaps || []) card.append(node("p", gap, "reason"));

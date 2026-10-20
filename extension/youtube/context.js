@@ -9,7 +9,10 @@ for (const [alias, country] of Object.entries({
   "United States of America": "United States", "U.S.": "United States", "USA": "United States",
   "US": "United States", "U.K.": "United Kingdom", "UK": "United Kingdom",
   "Britain": "United Kingdom", "Great Britain": "United Kingdom",
+  // In speech "America" and "Americans" name the United States; the continents are filtered below.
+  "America": "United States", "American": "United States", "Americans": "United States",
 })) countries.set(alias, country);
+const CONTINENTAL = /(?:latin|south|north|central|meso|pan)[\s-]+$/i;
 const names = [...countries.keys()].sort((a, b) => b.length - a.length);
 const canonical = new Map([...countries].map(([name, country]) => [name.toLowerCase(), country]));
 const places = new RegExp(`(?<![\\p{L}])(${names.map(n => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})(?![\\p{L}])`, "giu");
@@ -18,6 +21,7 @@ function countryIn(text) {
   // ASR often omits capitals; the pronoun "us" still cannot establish a country.
   const found = new Set([...text.matchAll(places)]
     .filter(match => match[1].toLowerCase() !== "us" || match[1] === "US")
+    .filter(match => !/^americ(?:a|an|ans)$/i.test(match[1]) || !CONTINENTAL.test(text.slice(Math.max(0, match.index - 12), match.index)))
     .map(match => canonical.get(match[1].toLowerCase())));
   return { value: found.size === 1 ? [...found][0] : "", ambiguous: found.size > 1 };
 }

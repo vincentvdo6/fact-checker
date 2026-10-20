@@ -81,13 +81,13 @@ but cannot make a passage eligible without matching the assertion itself. Visibl
 truncated teasers are excluded. HTML pages are supported; PDFs and pages
 requiring browser execution may be unavailable. Research candidates give the
 verifier **No verdict**: matching words do not establish truth, semantic relevance or
-applicability. When the sentence-level reading below reaches a direction, the row's badge
-shows it -- "Contradicted, not established (reading)", "Partially contradicted (reading)",
-"Supported (reading)" -- dashed, marked as a reading, because it is composed by rules from
-quoted sentences and is a draft; "not established" means every count is qualified (one
-source, an undated source, a narrower scope, or an undeclared country) and "partially" is
-said only when one part of a contrast is established; an unresolved reading keeps the plain
-**No verdict**. Old local Wikipedia matches do not
+applicability. The card's badge comes from the sentence-level reading below --
+"Supported", "Contradicted", "Supported, not established", "Partially contradicted",
+"Contested" -- dashed, with the card stating that it is a draft composed by rules from
+quoted sentences; "not established" in a badge means every count is qualified (an undated
+source, a narrower scope, or an undeclared country) and "partially" is said only when one
+part of a contrast is established. A reading that finds no direction shows **Not
+established**; a check with no reading shows **No verdict**. Old local Wikipedia matches do not
 suppress a fresh news search. Errors and unknown dates stay visible.
 
 To disable network research, set `FACT_CHECKER_WEB_SEARCH` to `off` in the Windows
@@ -98,7 +98,8 @@ Wikipedia corpus, which cannot establish recent events.
 ## Automatic context and corrections
 
 Each check looks for a single explicit country in its recent captions, falling back to
-the video title. Conflicting countries in the excerpt stay unknown. This is a detected
+the video title. "America", "American" and "Americans" count as the United States; Latin,
+South, North and Central America do not. Conflicting countries in the excerpt stay unknown. This is a detected
 context hint, shown with its origin; it can be wrong when a place is only mentioned in
 passing. The viewer's location, channel location and search edition never supply it.
 
@@ -114,10 +115,32 @@ context reach the local checker and can be included in its public search queries
 
 ## Sentence-level reading
 
-Beside the research, each researched claim gets a **Sentence-level reading (draft)**.
+Each checked claim gets a card, newest first: a badge (Supported, Contradicted, Not
+established, or a qualified form of these), the claim, one line per assertion, and the
+sentences that were counted, each quoted with its source. Related sentences that were not
+counted, and how the claim was checked (limits, withheld sentences, searches, failed pages,
+every source read), are folded under the card; sentences the detector passed over are
+listed once at the end. The reading is a draft composed by rules, and the card says so.
+
 Every source sentence is typed by named rules first -- attributed opinion, forecasts,
 worked examples, definitions and navigation text are read as context and can never
-count -- and a local model (a 739 MB DeBERTa-v3-base pair judge under `models/pair_judge`)
+count. A sentence that repeats ten or more consecutive words of the captions is the
+speaker's own words reprinted -- a transcript of the speech, or an article quoting it --
+and never counts as evidence for them. So is one sharing most of its word triples with the
+captions (caption disfluencies and spellings differ from a printed text) when it opens a
+quotation or another sentence on the same page matches too; a lone unquoted near match is
+how a news report restates a short claim, and stays evidence. A page whose address names a transcript or the text of a
+speech or debate is read as speech throughout.
+
+Some caption sentences are listed under "not checked" with their reason instead of being
+researched: one that names nothing but pronouns, numbers and times ("Last month it was
+32,000"), because its subject was said earlier and a search for its words finds any page
+with that number; one whose subject is "he", "she" or "they" with no name after it ("They
+don't have equity in their home"), for the same reason; one recounting what someone said
+("He said they're just having headaches"), because quotations never count; and, in
+punctuated captions, the last sentence when it has not finished at the click.
+
+A local model (a 739 MB DeBERTa-v3-base pair judge under `models/pair_judge`)
 then answers one narrow question per remaining sentence: does it state the assertion, state its negation, bear on it, or neither. A
 verdict is composed from those answers by fixed rules: only exact quoted sentences
 count; a qualifier in the sentence, an unknown claim country or an undated page can
@@ -141,8 +164,9 @@ count. This is a conservative lexical filter, not a semantic relevance check: sy
 can be missed and incidental shared words can still pass. The reading is a draft over a model whose reading of a
 single news sentence, when it counts one, was wrong about half the time on unseen claims
 (measured 2026-09-12 on labels an assistant wrote, not a person; the card prints the
-record beside every count), which is why one counted sentence never establishes anything
-and why every counted sentence is quoted with its direction for you to read yourself.
+record beside every count), which is why a single counted sentence establishes only from
+an independent, dated source, and why every counted sentence is quoted with its direction
+for you to read yourself.
 
 Set `FACT_CHECKER_CONTEXT_REVIEW` to `off` to skip the second opinion on contextual
 sentences. When the local v5 pair judge is installed, it reviews only sentences the

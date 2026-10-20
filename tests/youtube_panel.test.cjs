@@ -528,8 +528,14 @@ test("sentence-level draft shows quoted sentences and its status without a verdi
   const content = text(app.root);
   assert.match(content, /Sentence-level reading \(draft\)/);
   assert.match(content, /Not established\. draft: rule-composed from an unmeasured judge/);
-  assert.equal(descendants(app.root).find(element => element.className?.startsWith("badge")).textContent, "No verdict",
-    "an unresolved reading keeps the plain badge");
+  assert.equal(descendants(app.root).find(element => element.className?.startsWith("badge")).textContent, "Not established",
+    "an unresolved reading says so plainly");
+  assert.match(content, /Draft reading of quoted sources by fixed rules; not a verified verdict\./);
+  const folded = descendants(app.root).filter(element => element.tag === "details").map(element => element.className);
+  assert.ok(folded.includes("related") && folded.includes("how"), "related sentences and the method fold away");
+  const related = descendants(app.root).find(element => element.tag === "details" && element.className === "related");
+  assert.equal(related.children[0].tag, "summary");
+  assert.equal(related.children[0].textContent, "Relevant, not counted (9)", "the folded section names its own count");
   assert.match(content, /contradicted but not established: every counted sentence states a narrower scope\./);
   assert.match(content, /“We have a good job shortage\.” is not established by the sources\./);
   assert.match(content, /wpr\.org \(published 2025-06-25\) \[read as denying it\]: “Wisconsin’s labor shortage is a major barrier <img src=x>\.”/);
@@ -602,7 +608,8 @@ test("each assertion keeps its ranked citations and its own reading regardless o
       if (element.textContent.startsWith("“The library is open.” is")) break;
       section.push(element);
     }
-    const quotes = section.filter(element => element.className === "evidence").map(text);
+    const quotes = section.flatMap(element => [element, ...descendants(element)])
+      .filter(element => element.className === "evidence").map(text);
     alone ??= quotes;
     assert.deepEqual(quotes, alone, "earlier assertions cannot fill this assertion's slots with lower-ranked citations");
     assert.equal(quotes.length, 6);
@@ -731,17 +738,45 @@ test("a reading with a direction becomes the row's badge, marked as a reading", 
   ]));
   await flush();
   const badges = descendants(app.root).filter(element => element.className?.startsWith("badge"));
+  // Newest first: the last sentence spoken is the claim the viewer just heard.
   assert.deepEqual(badges.map(element => [element.textContent, element.className]), [
-    ["Partially contradicted (reading)", "badge reading-against"],
-    ["Partially established (reading)", "badge reading-for"],
-    ["Contradicted (reading)", "badge reading-against"],
-    ["No verdict", "badge declined"],
-    ["Contradicted, not established (reading)", "badge reading-against"],
-    ["Supported (reading)", "badge reading-for"],
-    ["Supported, not established (reading)", "badge reading-for"],
+    ["Supported, not established", "badge reading-for"],
+    ["Supported", "badge reading-for"],
+    ["Contradicted, not established", "badge reading-against"],
+    ["Not established", "badge declined"],
+    ["Contradicted", "badge reading-against"],
+    ["Partially established", "badge reading-for"],
+    ["Partially contradicted", "badge reading-against"],
   ]);
   assert.match(text(app.root), /“a” is supported \(one source: rbc\.com \(published 2025-07-09\)\)\./, "an established assertion names its basis");
   assert.match(text(app.root), /Contradicted, not established\. /, "one assertion: no 'partially'");
   assert.match(text(app.root), /One part supported, not established\. /, "a contrast names the part");
-  assert.match(text(app.root), /The verifier gives no verdict\. The sentence-level reading below composes one/);
+  assert.doesNotMatch(text(app.root), /The verifier gives no verdict/, "news checks do not describe the offline verifier");
+  assert.equal((text(app.root).match(/Draft reading of quoted sources by fixed rules; not a verified verdict\./g) || []).length, 7);
+});
+
+test("the claim just heard comes first and skipped sentences are listed once, not as cards", async () => {
+  const app = fixture();
+  app.open();
+  const checked = (claim) => ({status: "verified", outcome: "declined_web_review", verdict: null,
+    research: {assertions: [], gaps: [], errors: [], sources: []},
+    decomposed: {status: "draft", verdict: {relationship: "insufficient", summary: "unresolved", scope_limits: [], withheld: {},
+      assertions: [{id: "a", text: claim, status: "insufficient", evidence: [], relevant: [], judged: 0, eligible: 0}]}}});
+  app.reply(result([
+    {text: "Earlier claim about rates.", result: checked("Earlier claim about rates.")},
+    {text: "Okay?", result: {status: "skipped"}},
+    {text: "No. Yes, we do.", result: {status: "skipped"}},
+    {text: "He said they're fine.", result: {status: "skipped",
+      filter_reason: "reported speech: quotations are never counted as evidence"}},
+    {text: "Latest claim about jobs.", result: checked("Latest claim about jobs.")},
+  ]));
+  await flush();
+  const claims = descendants(app.root).filter(element => element.className === "claim").map(element => element.textContent);
+  assert.deepEqual(claims, ["Latest claim about jobs.", "Earlier claim about rates."]);
+  const skipped = descendants(app.root).filter(element => element.tag === "details" && element.className === "skipped");
+  assert.equal(skipped.length, 1);
+  assert.match(text(skipped[0]), /3 sentences not checked.*Okay\?.*No\. Yes, we do\./s);
+  assert.match(text(skipped[0]), /He said they're fine\. \(reports what someone said\)/, "a known skip names its reason");
+  assert.doesNotMatch(text(skipped[0]), /Okay\? \(/, "a detector skip carries no invented reason");
+  assert.equal(descendants(app.root).filter(element => element.tag === "article").length, 2);
 });
