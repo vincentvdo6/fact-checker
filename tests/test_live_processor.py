@@ -33,6 +33,21 @@ def test_filter_rejection_never_calls_verifier():
     assert "verdict" not in result
 
 
+def test_a_fragment_that_names_nothing_is_skipped_before_any_research():
+    instance = processor(True)
+    instance.verifier = SimpleNamespace(verify=lambda *a, **k: pytest.fail("a fragment was verified"))
+    instance.web = SimpleNamespace(review=lambda *a, **k: pytest.fail("a fragment was researched"), always_search=True)
+    fragment = ClaimContext(TranscriptUpdate("a", 0, "Last month it was 32,000", 0, 1, True), ())
+    result = instance.process(fragment)
+    assert result["status"] == "skipped" and result["filter_reason"] == "fragment: names nothing to check"
+    said = ClaimContext(TranscriptUpdate("b", 0, "He said they're just having headaches.", 0, 1, True), ())
+    result = instance.process(said)
+    assert result["status"] == "skipped" and result["filter_reason"].startswith("reported speech")
+    unnamed = ClaimContext(TranscriptUpdate("c", 0, "They don't have equity in their home.", 0, 1, True), ())
+    result = instance.process(unnamed)
+    assert result["status"] == "skipped" and result["filter_reason"].startswith("unnamed subject")
+
+
 def test_inference_failure_is_not_an_abstention():
     instance = processor(True)
 

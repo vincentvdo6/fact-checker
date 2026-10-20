@@ -464,6 +464,31 @@ def test_skipped_sentences_do_not_use_up_the_three_claim_slots():
     assert longer["omitted_claims"] == 1 and longer["rows"][0]["text"] == "Rates rose in April by two points."
 
 
+def test_a_sentence_still_being_spoken_at_the_click_is_listed_but_not_researched():
+    seen = []
+
+    class Processor:
+        def process(self, context):
+            seen.append(context.claim.text)
+            return {"status": "verified", "outcome": "declined_web_review", "verdict": None,
+                    "research": {"sources": [], "assertions": [], "gaps": [], "errors": []}}
+
+        def close(self):
+            pass
+
+    app = YouTubeChecker(lambda _: Processor())
+    try:
+        result = app.check(payload(captions=[{"start": 10, "end": 15, "text": "On January 6, we had the lowest taxes ever. We had the lowest"}]))
+        unpunctuated = app.check(payload(captions=[{"start": 10, "end": 15,
+                                                    "text": "taxes were the lowest ever >> and the economy grew"}]))
+    finally:
+        app.close()
+    assert seen == ["On January 6, we had the lowest taxes ever.", "and the economy grew", "taxes were the lowest ever"]
+    assert result["rows"][-1] == {"text": "We had the lowest", "result": {
+        "status": "skipped", "filter_reason": "unfinished: still being spoken when checked"}}
+    assert [row["result"]["status"] for row in unpunctuated["rows"]] == ["verified"] * 2, "unpunctuated captions show no boundary"
+
+
 def test_default_live_processor_researches_latest_worthy_claims_before_judging(monkeypatch):
     from src.pipeline.live_processor import LiveProcessor
 

@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 from dataclasses import asdict
 
-from src.pipeline.caption_claims import corrective_contrast
+from src.pipeline.caption_claims import corrective_contrast, names_a_subject, names_whom, reports_speech
 from src.pipeline.caption_concepts import concept_packet, select_context_phrases
 from src.pipeline.context import SpeechMetadata, build_query
 from src.pipeline.detector import DetectorFilter
@@ -81,6 +81,12 @@ class LiveProcessor:
         }
         if not decision.worthy:
             return result | {"status": "skipped"}
+        if not names_a_subject(query.claim):
+            return result | {"status": "skipped", "filter_reason": "fragment: names nothing to check"}
+        if reports_speech(query.claim):
+            return result | {"status": "skipped", "filter_reason": "reported speech: quotations are never counted as evidence"}
+        if not names_whom(query.claim):
+            return result | {"status": "skipped", "filter_reason": "unnamed subject: whom it is about was said earlier"}
         if query.mode == "topic":
             result["retrieval_context"] = list(query.context_text)
             web = getattr(self, "web", None)

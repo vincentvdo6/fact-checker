@@ -52,6 +52,7 @@ class CaptionExcerpt:
 
 
 COUNTRY = re.compile(r"[^\W\d_](?:[^\W\d_]|[ .’'&-]){1,59}")
+_FINISHED = re.compile(r"[.!?…][\"'”’)\]]*\s*$")
 
 
 def caption_excerpt(payload: dict) -> CaptionExcerpt:
@@ -211,11 +212,15 @@ class YouTubeChecker:
         if begin_check is not None:
             begin_check(metadata)
         sentences = caption_claims(excerpt.text)
+        # Punctuated captions that stop mid-sentence were clicked while the speaker was still talking;
+        # checking the first words of that sentence would check something nobody has finished claiming.
+        unfinished = (sentences[-1:] if len(sentences) > 1 and not _FINISHED.search(sentences[-1].text)
+                      and any(_FINISHED.search(sentence.text) for sentence in sentences[:-1]) else [])
         candidates = []
         # Most recent first, so the clicked claim gets the shared web budget before anything earlier,
         # and the three slots go to check-worthy sentences: a "No." or an "Okay?" the detector skips
         # is shown as skipped but does not use one up.
-        for sentence in reversed(sentences):
+        for sentence in reversed(sentences[:len(sentences) - len(unfinished)]):
             # Cue timings bound the excerpt; sentence-level word timings are unavailable.
             claim = TranscriptUpdate(str(sentence.index), 0, sentence.text, excerpt.start, excerpt.end, True, "captions")
             preceding = tuple(
@@ -234,6 +239,9 @@ class YouTubeChecker:
                     break
                 rows.append({"text": sentence.text, "result": self.processor.process(context)})
         rows.reverse()
+        rows.extend({"text": sentence.text, "result": {"status": "skipped",
+                                                       "filter_reason": "unfinished: still being spoken when checked"}}
+                    for sentence in unfinished)
         web_scope = ("experimental news research enabled; source applicability unverified"
                      if getattr(self.processor, "web", None) is not None
                      else "web research is off")
