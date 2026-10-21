@@ -81,7 +81,7 @@ function fixture(initialStorage = {}, deferStorage = false) {
   const timers = new Set();
   const timeouts = [];
   // Viewing mode and the player's box on screen; the defaults leave the page in normal mode.
-  const view = { theater: false, fullscreen: null, player: null, picture: null, width: 1280 };
+  const view = { theater: false, fullscreen: null, player: null, picture: null, width: 1280, height: 900 };
   video.getBoundingClientRect = () => view.picture;
   const storageReads = [];
   const stored = { ...initialStorage };
@@ -91,6 +91,9 @@ function fixture(initialStorage = {}, deferStorage = false) {
     stored,
     get innerWidth() {
       return view.width;
+    },
+    get innerHeight() {
+      return view.height;
     },
     document: {
       documentElement: root,
@@ -946,7 +949,14 @@ test("blips sit beside the player in normal mode and below it when YouTube stack
   app.view.player = {top: 64, right: 976, bottom: 600, width: 952, height: 536};
   app.view.picture = {right: 976, width: 952};
   app.tick();
-  assert.equal(stackOf(app).style.top, "612px", "with no room beside the video the stack moves below it, not over it");
+  assert.deepEqual({...stackOf(app).style}, {top: "612px", right: "24px", width: "344px", maxHeight: "208px"},
+    "with no room beside the video the stack moves below it, not over it, and stops above the Check button");
+  assert.equal(blipLayer(app).attributes["data-corner"], "false");
+  app.view.height = 700;
+  app.tick();
+  assert.deepEqual({...stackOf(app).style}, {top: "76px", right: "36px", width: "344px", maxHeight: "464px"},
+    "with no room below either, it goes to the player's corner rather than off screen");
+  assert.equal(blipLayer(app).attributes["data-corner"], "true");
 });
 
 test("in theater mode the newest directional reading opens inside the black bar beside the video", async () => {
@@ -974,7 +984,28 @@ test("in theater mode the newest directional reading opens inside the black bar 
   app.view.picture = {right: 1220, width: 1160};
   app.tick();
   assert.equal(stackOf(app).style.top, "619px", "with no black bar the stack goes below the player");
+  assert.equal(stackOf(app).style.maxHeight, "201px", "and stops above the Check button");
   assert.equal(blipLayer(app).attributes["data-narrow"], "false");
+});
+
+test("in theater mode with narrow black bars and no room below, the reading opens over the player's corner and folds", async () => {
+  // The live 1440x900 geometry: a 16:9 picture leaves 70 px bars and the player ends 113 px above the bottom.
+  const app = fixture();
+  app.view.theater = true;
+  app.view.width = 1440;
+  app.view.player = {top: 56, right: 1440, bottom: 787, width: 1440, height: 731};
+  app.view.picture = {right: 1370, width: 1300};
+  app.tick();
+  assert.deepEqual({...stackOf(app).style}, {top: "68px", right: "12px", width: "344px", maxHeight: "659px"});
+  assert.equal(blipLayer(app).attributes["data-corner"], "true", "styled as see-through chips");
+  assert.equal(blipLayer(app).attributes["data-mode"], "theater", "the Check button stays, unlike fullscreen");
+  app.open();
+  app.reply(result([{text: "Rates rose.", result: supported("one source: cnbc.com (published 2026-03-06)", counted("states"))}]));
+  await flush();
+  assert.equal(cards(app).length, 1, "the reading opens by itself");
+  app.elapse(15000);
+  assert.equal(cards(app).length, 0, "over the picture it folds back after 15 s");
+  assert.ok(descendants(stackOf(app)).some((element) => element.className === "blip for"));
 });
 
 test("in fullscreen the reading opens in the corner, folds into a chip after 15 s, and a single contradiction is flagged", async () => {
@@ -985,6 +1016,7 @@ test("in fullscreen the reading opens in the corner, folds into a chip after 15 
   app.tick();
   assert.equal(blipLayer(app).parentElement, screen, "only the fullscreen element is shown, so the blips move into it");
   assert.equal(blipLayer(app).attributes["data-mode"], "fullscreen");
+  assert.equal(blipLayer(app).attributes["data-corner"], "true");
   assert.deepEqual({...stackOf(app).style}, {top: "20px", right: "20px", width: "344px", maxHeight: ""});
   app.open();
   app.reply(result([{text: "We don't have a labor shortage.", result: contradicted("one source: rbc.com (published 2025-07-09)")}]));

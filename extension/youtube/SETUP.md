@@ -1,9 +1,10 @@
 # Try the YouTube extension locally
 
-The extension shows each check as a small notification ("blip") beside the video, never over
-it outside fullscreen. Start a check with the **Check** button in the page's bottom-right corner,
-the extension icon, or **Alt+Shift+F** (change it at `chrome://extensions/shortcuts`). The **⋯**
-button opens the full details and the context corrections; close them with × or Escape.
+The extension shows each check as a small notification ("blip") beside the video where there is
+room, and over its top-right corner only when nothing else fits. Start a check with the **Check**
+button in the page's bottom-right corner, the extension icon, or **Alt+Shift+F** (change it at
+`chrome://extensions/shortcuts`). The **⋯** button opens the full details and the context
+corrections; close them with × or Escape.
 Chrome or Edge starts
 the Python model host when needed; no local website or audio listener is required.
 
@@ -276,14 +277,17 @@ pairs a claim and a few minutes a claim to label.
 
 - Blips are placed from the player's box on screen and never move or restyle YouTube:
   - **Normal mode:** a stack beside the player, over the recommendations column (below the
-    player when YouTube stacks a narrow window). Results stay compact; tap one for its
-    quoted source.
+    player when YouTube stacks a narrow window and the stack fits above the Check button).
+    Results stay compact; tap one for its quoted source.
   - **Theater mode:** inside the black bar beside the video, where the newest reading opens
-    as a narrow card by itself. With no bar (an unusually tall or narrow window) the stack
-    goes below the player.
-  - **Fullscreen:** see-through chips in the top-right corner of the video, the only mode
-    that draws over it; the newest reading opens there and folds back to a chip after 15 s.
-    The page's Check button is hidden; use the shortcut.
+    as a narrow card by itself. The bar needs 140 px, which a 16:9 video leaves on a 16:9
+    screen (150 px at 1920×1080) but not on a 16:10 one (70 px at 1440×900). Without it the
+    stack goes below the player if it fits above the Check button.
+  - **When nothing fits** (fullscreen, a theater player that fills a 16:10 screen, or
+    YouTube's side-rail layout with its large player): see-through chips in the video's
+    top-right corner, the only placement that draws over the picture. The newest reading
+    opens there and folds back to a chip after 15 s. In fullscreen the page's Check button
+    is hidden; use the shortcut.
   - A supported or contradicted reading stays until dismissed; a contradiction resting on one
     source says "One source only. Read it before you repeat this." Not established and
     qualified readings show for 6 s, then become a count that opens the details.

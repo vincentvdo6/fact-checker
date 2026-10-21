@@ -14,8 +14,9 @@ below measure individual components, not reliability on political videos.
 Pause after a claim and press **Check** (or Alt+Shift+F, which also works in fullscreen).
 The extension reads the last 30 seconds of captions, and the local checker picks up to three
 check-worthy sentences. It searches Google News for each one and reads the pages on your
-machine, then shows one notification per claim beside the video, newest first. Nothing covers
-the picture outside fullscreen:
+machine, then shows one notification per claim beside the video, newest first. Only when nothing
+fits beside or below the player (fullscreen, or a theater player that fills a 16:10 screen) do they
+sit over its top-right corner, as small see-through chips:
 
 | Normal | Theater | Fullscreen |
 | --- | --- | --- |

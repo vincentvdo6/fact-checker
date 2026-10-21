@@ -14,6 +14,7 @@
     ui = null,
     blipHost = null,
     blipUi = null,
+    corner = false,
     entries = [],
     folded = 0,
     failure = "",
@@ -423,10 +424,12 @@
   }
 
   // Results arrive as blips beside the video rather than in a sidebar. Nothing covers the picture
-  // unless the viewer asks: in normal mode the stack sits beside the player, in theater mode in the
-  // black bar beside the video, and only in fullscreen, where nothing else is on screen, over its
-  // corner as see-through chips. A directional reading opens by itself in theater and fullscreen
-  // (in fullscreen it folds back after 15 s); "not established" shows for 6 s, then becomes a count.
+  // while there is room elsewhere: in normal mode the stack sits beside the player, in theater mode in
+  // the black bar beside the video, and otherwise below the player when it fits above the Check button.
+  // When nothing fits -- fullscreen, or a theater player whose bars are too narrow and whose bottom is
+  // near the screen's -- the stack sits over the player's corner as see-through chips. A directional
+  // reading opens by itself in theater and fullscreen (over the corner it folds back after 15 s);
+  // "not established" shows for 6 s, then becomes a count.
   const OPEN_FOR_MS = 15000,
     QUIET_FOR_MS = 6000;
   const BLIP_CSS = `
@@ -504,11 +507,11 @@
     :host([data-narrow="true"]) .source{padding:0;background:none}
     :host([data-narrow="true"]) .actions{flex-direction:column}
     :host([data-mode="fullscreen"]) .controls,:host([data-mode="fullscreen"]) .secondary{display:none}
-    :host([data-mode="fullscreen"]) .blip{align-self:flex-end;align-items:center;border:0;border-radius:18px;
+    :host([data-corner="true"]) .blip{align-self:flex-end;align-items:center;border:0;border-radius:18px;
       background:rgba(28,28,28,.82);box-shadow:none;padding:6px 4px 6px 6px}
-    :host([data-mode="fullscreen"]) .blip .said{display:none}
-    :host([data-mode="fullscreen"]) .card{border:0;background:rgba(28,28,28,.94)}
-    :host([data-mode="fullscreen"]) .count{border:0;background:rgba(28,28,28,.82)}
+    :host([data-corner="true"]) .blip .said{display:none}
+    :host([data-corner="true"]) .card{border:0;background:rgba(28,28,28,.94)}
+    :host([data-corner="true"]) .count{border:0;background:rgba(28,28,28,.82)}
   `;
 
   function viewMode() {
@@ -551,20 +554,28 @@
     if (blipHost.parentElement !== parent) parent.append(blipHost);
     // The visible width, without a scrollbar; a box that runs past it is clipped to it.
     const mode = viewMode(),
-      width = document.documentElement.clientWidth || globalThis.innerWidth || 1280;
+      width = document.documentElement.clientWidth || globalThis.innerWidth || 1280,
+      height = document.documentElement.clientHeight || globalThis.innerHeight || 720;
     const player = document.getElementById("movie_player")?.getBoundingClientRect?.();
     const picture = document.querySelector("video.html5-main-video")?.getBoundingClientRect?.();
-    let box = mode === "fullscreen" ? { top: 20, right: 20, width: 344 } : { top: 72, right: 24, width: 344 };
+    let box = mode === "fullscreen" ? { top: 20, right: 20, width: 344, corner: true } : { top: 72, right: 24, width: 344 };
     if (mode !== "fullscreen" && player?.width && picture?.width) {
       const edge = Math.min(player.right, width),
-        bar = edge - picture.right;
+        bar = edge - picture.right,
+        // Room below the player that the fixed Check button (24 px margin, 44 px tall) leaves free.
+        below = height - (player.bottom + 12) - 80;
       if (mode === "theater" && bar >= 140)
         box = { top: player.top + 12, right: width - edge + 8, width: Math.min(344, bar - 16),
                 maxHeight: player.height - 72 };
+      else if ((mode === "theater" || width - player.right < 368) && below >= 120)
+        box = { top: player.bottom + 12, right: 24, width: 344, maxHeight: below };
       else if (mode === "theater" || width - player.right < 368)
-        box = { top: player.bottom + 12, right: 24, width: 344 };
+        box = { top: player.top + 12, right: width - edge + 12, width: 344, maxHeight: player.height - 72,
+                corner: true };
     }
+    corner = Boolean(box.corner);
     blipHost.setAttribute("data-mode", mode);
+    blipHost.setAttribute("data-corner", String(corner));
     blipHost.setAttribute("data-narrow", String(box.width < 240));
     Object.assign(blipUi.stack.style, {
       top: `${Math.max(8, Math.round(box.top))}px`, right: `${Math.round(box.right)}px`,
@@ -726,7 +737,7 @@
       mode = viewMode();
     if (lead && mode !== "normal") {
       lead.open = true;
-      if (mode === "fullscreen")
+      if (corner)
         setTimeout(() => {
           if (!entries.includes(lead)) return;
           lead.open = false;
