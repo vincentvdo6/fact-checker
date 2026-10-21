@@ -27,6 +27,17 @@ from src.verdict.pair_judgment import RELATIONS
 DATASET = Path("data/kaggle/pair-judge-v1/pairs_test.jsonl.gz")
 
 
+def comparable(judge: PairJudge, pairs: list[dict]) -> tuple[list[dict], int]:
+    """The pairs the local judge scores whole, and how many it refuses for length.
+
+    Kaggle scored over-long pairs truncated; the local judge refuses them whole, so only pairs that
+    fit can be compared like for like. The count left out is reported, never hidden.
+    """
+    lengths = judge._token_lengths([(pair["premise"], pair["hypothesis"]) for pair in pairs])
+    kept = [pair for pair, length in zip(pairs, lengths, strict=True) if length <= judge.max_length]
+    return kept, len(pairs) - len(kept)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--models", type=Path, default=MODEL_DIR)
@@ -46,6 +57,7 @@ def main() -> int:
         raise SystemExit(f"{len(missing)} test pairs have no saved logits; the dataset and the run disagree")
     sample = random.Random(args.seed).sample(pairs, min(args.limit, len(pairs)))
     judge = PairJudge(model_dir=args.models, min_band=None)
+    sample, over_limit = comparable(judge, sample)
     started = time.monotonic()
     local = judge.logits([(pair["premise"], pair["hypothesis"]) for pair in sample])
     seconds = time.monotonic() - started
@@ -56,7 +68,8 @@ def main() -> int:
     if judge.bands is not None and judge.calibrator is not None:
         confident = judge.calibrator.transform(local).max(axis=1), judge.calibrator.transform(remote).max(axis=1)
         bands = int(sum(judge.bands.assign(float(a)) == judge.bands.assign(float(b)) for a, b in zip(*confident)))
-    report = {"pairs": len(sample), "max_abs_logit_difference": difference, "tolerance": args.tolerance,
+    report = {"pairs": len(sample), "over_limit_not_compared": over_limit,
+              "max_abs_logit_difference": difference, "tolerance": args.tolerance,
               "argmax_agreement": f"{argmax}/{len(sample)}", "band_agreement": None if bands is None else f"{bands}/{len(sample)}",
               "seconds": round(seconds, 1), "labels": list(RELATIONS),
               "passed": difference <= args.tolerance and argmax == len(sample) and (bands is None or bands == len(sample))}
